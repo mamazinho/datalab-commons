@@ -31,13 +31,12 @@ class CapturingLogProcessor(LogRecordProcessor):
 @pytest.fixture
 def observability(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("CONSOLE_SPANS", "false")
-    monkeypatch.setenv("GRAFANA_OTLP_ENDPOINT", "")
     monkeypatch.delenv("LOGFIRE_TOKEN", raising=False)
 
     root = logging.getLogger()
     previous_handlers, previous_level = list(root.handlers), root.level
 
-    configure_observability(SERVICE_NAME, "1.2.3", "public")
+    configure_observability(SERVICE_NAME, "1.2.3")
     captured = CapturingLogProcessor()
     logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_logger_provider().add_log_record_processor(captured)
 
@@ -77,8 +76,8 @@ def records_named(captured, message: str) -> list:
 
 
 class TestLogPipeline:
-    """Os logs precisam sair como LogRecord do OpenTelemetry, e não como span: é o formato que o
-    Loki entende. Se isto quebrar, o Grafana fica sem a tela de logs e sobra só o Tempo."""
+    """Os logs precisam sair como LogRecord do OpenTelemetry, e não como span. Se isto quebrar,
+    eles viram spans de duração zero e some a tela de logs."""
 
     async def test_o_log_da_aplicacao_chega_ao_pipeline_otel(self, client, observability):
         await client.get("/items/42")
@@ -87,7 +86,7 @@ class TestLogPipeline:
 
     async def test_o_corpo_do_log_e_so_a_mensagem(self, client, observability):
         """Formatado viria "INFO:teste.rota:Buscando item"; o nível e o logger já são campos
-        próprios, e repeti-los no corpo atrapalha buscar por mensagem no Loki."""
+        próprios, e repeti-los no corpo atrapalha buscar por mensagem."""
         await client.get("/items/42")
 
         bodies = [record.body for record in observability.records]
@@ -99,7 +98,7 @@ class TestLogPipeline:
         assert records_named(observability, "Buscando item")[0].trace_id
 
     async def test_o_trace_id_do_log_e_o_mesmo_devolvido_no_header(self, client, observability):
-        """É a ponte entre os dois backends: sem ela não dá para sair do Grafana para o Logfire."""
+        """É o que o suporte usa: com o header em mãos, acha-se o trace inteiro no Logfire."""
         response = await client.get("/items/42")
 
         record = records_named(observability, "Buscando item")[0]
@@ -119,28 +118,11 @@ class TestLogPipeline:
         assert "item_id" not in conclusion
 
 
-class TestExposure:
-    @pytest.mark.parametrize(
-        ("exposure", "expected"),
-        [
-            pytest.param("internal", True, id="interno-entra-no-trace-de-quem-chamou"),
-            pytest.param("public", False, id="publico-recusa-traceparent-de-fora"),
-        ],
-    )
-    def test_decide_se_aceita_traceparent_de_entrada(self, monkeypatch: pytest.MonkeyPatch, exposure, expected):
-        """No interno é o que põe os dois serviços no mesmo trace e mostra a conversa inteira.
-        No público, aceitar deixaria qualquer cliente injetar trace_id."""
-        monkeypatch.setenv("CONSOLE_SPANS", "false")
-        monkeypatch.delenv("LOGFIRE_TOKEN", raising=False)
-
-        configure_observability(SERVICE_NAME, "1.2.3", exposure)
-
-        assert logfire.DEFAULT_LOGFIRE_INSTANCE.config.distributed_tracing is expected
-
-    def test_exige_a_exposicao_declarada(self):
-        """Sem default: é a única decisão aqui que um serviço novo erra em silêncio."""
-        with pytest.raises(TypeError):
-            configure_observability(SERVICE_NAME, "1.2.3")  # type: ignore[call-arg]
+class TestDistributedTracing:
+    def test_aceita_traceparent_de_entrada(self, observability):
+        """É o que junta navegador, esta API e a core-api num trace só. Desligado, cada processo
+        abre o próprio trace e o fluxo inteiro deixa de ser visível de uma vez."""
+        assert logfire.DEFAULT_LOGFIRE_INSTANCE.config.distributed_tracing is True
 
 
 class TestInstrumentFastapiApp:
@@ -148,8 +130,8 @@ class TestInstrumentFastapiApp:
         assert any(middleware.cls is RequestLoggingMiddleware for middleware in app.user_middleware)
 
     async def test_a_rota_excluida_nao_recebe_trace(self, client):
-        """O healthcheck do balanceador bate a cada poucos segundos: instrumentá-lo encheria o
-        Grafana de traces que não dizem nada."""
+        """O healthcheck do balanceador bate a cada poucos segundos: instrumentá-lo encheria a
+        cota de traces que não dizem nada."""
         response = await client.get("/health/")
 
         assert TRACE_HEADER not in response.headers

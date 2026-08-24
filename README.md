@@ -18,17 +18,12 @@ Extras: `sqlalchemy` para quem tem banco, `ai` para quem roda pydantic-ai.
 
 ## Observabilidade
 
-Um `logfire.configure()` alimenta dois destinos:
+Um `logfire.configure()`, um destino: o **Logfire** recebe os logs de aplicação como log, os spans
+de HTTP, banco, httpx e MCP, e as conversas dos agentes.
 
-| Destino | Recebe | Para quê |
-|---|---|---|
-| **Grafana / Loki** | logs de aplicação | log primário: startup, requisições, erros |
-| **Grafana / Tempo** | spans de HTTP, banco, httpx, MCP | latência e dependências |
-| **Logfire** | tudo, inclusive as conversas dos agentes | debug de prompt, tool call e token |
-
-O `trace_id` aparece em toda linha do Loki e é o mesmo do Logfire — é por ele que se pula de um
-para o outro. Os spans do scope `pydantic-ai` não saem para o Grafana: o texto das conversas é
-quase todo o volume, e mantê-lo só no Logfire é o que segura a cota.
+Todo serviço aceita `traceparent` de entrada, então a requisição que sai do navegador, passa pela
+Datalab API e chega à Core API é **um trace só**. Para isso valer, os serviços precisam apontar
+para o mesmo projeto Logfire — o token é por projeto, e com dois projetos o trace chega partido.
 
 ### Uso
 
@@ -41,7 +36,7 @@ from datalab_commons.observability import (
     get_logger,
 )
 
-configure_observability("meu-servico", "1.2.3", "public")  # ou "internal"
+configure_observability("meu-servico", "1.2.3")
 
 app = FastAPI()
 instrument_fastapi_app(app, engine=engine, excluded_urls=["/v1/health/"])
@@ -66,10 +61,7 @@ e reaparecem nos spans do serviço chamado.
 ```bash
 ENVIRONMENT=development
 LOG_LEVEL=INFO
-LOGFIRE_TOKEN=
-
-GRAFANA_OTLP_ENDPOINT=https://otlp-gateway-<zona>.grafana.net/otlp   # vazio desliga o envio
-GRAFANA_OTLP_HEADERS=Authorization=Basic <base64 de "instanceID:token">
+LOGFIRE_TOKEN=          # mesmo projeto em todos os serviços que compartilham trace
 
 CONSOLE_SPANS=true
 CAPTURE_AI_CONTENT=true
