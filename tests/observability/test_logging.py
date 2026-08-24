@@ -88,7 +88,7 @@ class TestSetupLogging:
 
 class TestConsoleFormatter:
     def formatted(self, **fields) -> str:
-        record = logging.LogRecord("teste", logging.INFO, __file__, 1, "Requisição concluída", None, None)
+        record = logging.LogRecord("teste", logging.INFO, __file__, 1, "Request completed", None, None)
         record.__dict__.update(fields)
         return ConsoleFormatter(CONSOLE_FORMAT).format(record)
 
@@ -98,7 +98,7 @@ class TestConsoleFormatter:
         assert "http_status=200" in self.formatted(http_status=200)
 
     def test_mantem_a_linha_limpa_quando_nao_ha_campos(self):
-        assert self.formatted().endswith("Requisição concluída")
+        assert self.formatted().endswith("Request completed")
 
     def test_ordena_os_campos_para_a_linha_nao_dancar_entre_logs(self):
         line = self.formatted(http_status=200, company_id="empresa-1")
@@ -148,15 +148,15 @@ class TestStructuredLogger:
         logger.setLevel(previous_level)
 
     def test_move_os_kwargs_para_campos_do_registro(self, recorded):
-        get_logger("teste.estruturado").info("Requisição concluída", http_status=200, duration_ms=12.3)
+        get_logger("teste.estruturado").info("Request completed", http_status=200, duration_ms=12.3)
 
         record = recorded.records[0]
         assert (record.http_status, record.duration_ms) == (200, 12.3)
 
     def test_mantem_a_mensagem_sem_interpolar_os_campos(self, recorded):
-        get_logger("teste.estruturado").info("Requisição concluída", http_status=200)
+        get_logger("teste.estruturado").info("Request completed", http_status=200)
 
-        assert recorded.records[0].getMessage() == "Requisição concluída"
+        assert recorded.records[0].getMessage() == "Request completed"
 
     def test_preserva_os_argumentos_proprios_do_logging(self, recorded):
         """`exc_info` precisa continuar chegando ao logging como argumento, não virar campo —

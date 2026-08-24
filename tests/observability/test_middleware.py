@@ -81,7 +81,7 @@ async def client(app):
 
 
 def completion_log(recorded_logs) -> logging.LogRecord:
-    return next(record for record in recorded_logs.records if record.getMessage() == "Requisição concluída")
+    return next(record for record in recorded_logs.records if record.getMessage() == "Request completed")
 
 
 class TestCompletionLog:
