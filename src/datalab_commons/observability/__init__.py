@@ -3,6 +3,7 @@ from datalab_commons.observability.logging import get_logger as get_logger
 from datalab_commons.observability.logging import setup_logging as setup_logging
 from datalab_commons.observability.middleware import current_trace_id as current_trace_id
 from datalab_commons.observability.settings import ObservabilitySettings as ObservabilitySettings
+from datalab_commons.observability.setup import Exposure as Exposure
 from datalab_commons.observability.setup import configure_observability as configure_observability
 from datalab_commons.observability.setup import instrument_agents as instrument_agents
 from datalab_commons.observability.setup import instrument_fastapi_app as instrument_fastapi_app

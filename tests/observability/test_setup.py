@@ -37,7 +37,7 @@ def observability(monkeypatch: pytest.MonkeyPatch):
     root = logging.getLogger()
     previous_handlers, previous_level = list(root.handlers), root.level
 
-    configure_observability(SERVICE_NAME, "1.2.3")
+    configure_observability(SERVICE_NAME, "1.2.3", "public")
     captured = CapturingLogProcessor()
     logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_logger_provider().add_log_record_processor(captured)
 
@@ -119,26 +119,28 @@ class TestLogPipeline:
         assert "item_id" not in conclusion
 
 
-class TestDistributedTracing:
+class TestExposure:
     @pytest.mark.parametrize(
-        ("configured", "expected"),
+        ("exposure", "expected"),
         [
-            pytest.param("true", True, id="servico-interno-aceita"),
-            pytest.param("false", False, id="api-publica-recusa"),
+            pytest.param("internal", True, id="interno-entra-no-trace-de-quem-chamou"),
+            pytest.param("public", False, id="publico-recusa-traceparent-de-fora"),
         ],
     )
-    def test_repassa_a_decisao_de_aceitar_traceparent_de_entrada(
-        self, monkeypatch: pytest.MonkeyPatch, configured, expected
-    ):
-        """Ligado, o span da core-api entra no mesmo trace da datalab-api e a conversa aparece
-        inteira. Desligado numa API pública, qualquer cliente poderia injetar trace_id."""
+    def test_decide_se_aceita_traceparent_de_entrada(self, monkeypatch: pytest.MonkeyPatch, exposure, expected):
+        """No interno é o que põe os dois serviços no mesmo trace e mostra a conversa inteira.
+        No público, aceitar deixaria qualquer cliente injetar trace_id."""
         monkeypatch.setenv("CONSOLE_SPANS", "false")
-        monkeypatch.setenv("DISTRIBUTED_TRACING", configured)
         monkeypatch.delenv("LOGFIRE_TOKEN", raising=False)
 
-        configure_observability(SERVICE_NAME, "1.2.3")
+        configure_observability(SERVICE_NAME, "1.2.3", exposure)
 
         assert logfire.DEFAULT_LOGFIRE_INSTANCE.config.distributed_tracing is expected
+
+    def test_exige_a_exposicao_declarada(self):
+        """Sem default: é a única decisão aqui que um serviço novo erra em silêncio."""
+        with pytest.raises(TypeError):
+            configure_observability(SERVICE_NAME, "1.2.3")  # type: ignore[call-arg]
 
 
 class TestInstrumentFastapiApp:

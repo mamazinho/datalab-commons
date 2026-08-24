@@ -41,7 +41,7 @@ from datalab_commons.observability import (
     get_logger,
 )
 
-configure_observability("meu-servico", "1.2.3")
+configure_observability("meu-servico", "1.2.3", "public")  # ou "internal"
 
 app = FastAPI()
 instrument_fastapi_app(app, engine=engine, excluded_urls=["/v1/health/"])
@@ -74,7 +74,6 @@ GRAFANA_OTLP_HEADERS=Authorization=Basic <base64 de "instanceID:token">
 CONSOLE_SPANS=true
 CAPTURE_AI_CONTENT=true
 TRACE_SAMPLE_RATE=1.0
-DISTRIBUTED_TRACING=false   # true só em serviço interno, que recebe traceparent de confiança
 ```
 
 ## Desenvolvimento
