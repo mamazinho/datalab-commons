@@ -59,10 +59,11 @@ def instrument_fastapi_app(
     engine: Any = None,
     excluded_urls: Sequence[str] | None = None,
 ) -> None:
-    app.add_middleware(RequestLoggingMiddleware)
+    excluded = list(excluded_urls) if excluded_urls else []
+    app.add_middleware(RequestLoggingMiddleware, excluded_paths=excluded)
     # Depois do add_middleware de propósito: o span do request precisa envolver o middleware,
     # senão não há trace_id para pôr no header nem para o log de conclusão.
-    logfire.instrument_fastapi(app, excluded_urls=list(excluded_urls) if excluded_urls else None)
+    logfire.instrument_fastapi(app, excluded_urls=excluded or None)
 
     if engine is not None:
         logfire.instrument_sqlalchemy(engine)

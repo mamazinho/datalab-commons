@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from time import perf_counter
 
 from opentelemetry import trace
@@ -13,8 +14,9 @@ logger = get_logger(__name__)
 
 
 class RequestLoggingMiddleware:
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(self, app: ASGIApp, excluded_paths: Sequence[str] = ()) -> None:
         self.app = app
+        self.excluded_paths = frozenset(excluded_paths)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -37,12 +39,13 @@ class RequestLoggingMiddleware:
             try:
                 await self.app(scope, receive, send_with_trace_header)
             finally:
-                logger.info(
-                    "Requisição concluída",
-                    http_route=route_template(scope),
-                    http_status=status_code,
-                    duration_ms=round((perf_counter() - started_at) * 1000, 2),
-                )
+                if scope["path"] not in self.excluded_paths:
+                    logger.info(
+                        "Requisição concluída",
+                        http_route=route_template(scope),
+                        http_status=status_code,
+                        duration_ms=round((perf_counter() - started_at) * 1000, 2),
+                    )
 
 
 def current_trace_id() -> str:

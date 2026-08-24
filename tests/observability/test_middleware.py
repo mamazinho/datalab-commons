@@ -130,6 +130,37 @@ class TestCompletionLog:
         assert completion_log(recorded_logs).http_status == 0
 
 
+class TestExcludedPaths:
+    @pytest.fixture
+    def client_com_health_excluido(self, app):
+        application = FastAPI()
+
+        @application.get("/health/")
+        async def health():
+            return "OK"
+
+        @application.get("/items/{item_id}")
+        async def item(item_id: int):
+            return {"item_id": item_id}
+
+        application.add_middleware(RequestLoggingMiddleware, excluded_paths=["/health/"])
+        return AsyncClient(transport=ASGITransport(app=application), base_url="https://test")
+
+    async def test_nao_loga_a_rota_excluida(self, client_com_health_excluido, recorded_logs):
+        """O healthcheck do balanceador bate a cada poucos segundos: uma linha por batida são
+        milhares de logs por dia que não dizem nada."""
+        async with client_com_health_excluido as http:
+            await http.get("/health/")
+
+        assert recorded_logs.records == []
+
+    async def test_segue_logando_as_demais(self, client_com_health_excluido, recorded_logs):
+        async with client_com_health_excluido as http:
+            await http.get("/items/7")
+
+        assert len(recorded_logs.records) == 1
+
+
 class TestNonHttpScopes:
     async def test_repassa_o_lifespan_sem_tentar_logar_uma_requisicao(self, recorded_logs):
         """O lifespan passa pelo mesmo middleware e não tem `method` nem `path`: tratá-lo como
