@@ -9,7 +9,6 @@ class ObservabilitySettings(BaseSettings):
 
     grafana_otlp_endpoint: str = ""
     grafana_otlp_headers: str = ""
-    # only Logfire.
     grafana_excluded_scopes: set[str] = {PYDANTIC_AI_SCOPE}
 
     console_spans: bool = True

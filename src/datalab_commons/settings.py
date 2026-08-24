@@ -12,7 +12,6 @@ class APISettings(BaseSettings):
     title: str = "FastAPI"
     version: str = "0.1.0"
 
-    # Custom settings
     disable_docs: bool = False
     host: str = "0.0.0.0"
     port: int = 8000
@@ -24,12 +23,6 @@ class APISettings(BaseSettings):
 
     @property
     def fastapi_kwargs(self) -> dict[str, Any]:
-        """
-        This returns a dictionary of the most commonly used keyword arguments when initializing a FastAPI instance
-
-        If `self.disable_docs` is True, the various docs-related arguments are disabled, preventing your spec from being
-        published.
-        """
         fastapi_kwargs: dict[str, Any] = {
             "debug": self.debug,
             "docs_url": self.docs_url,
