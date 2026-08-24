@@ -554,7 +554,6 @@ wheels = [
 
 [[package]]
 name = "datalab-commons"
-version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
@@ -597,7 +596,7 @@ requires-dist = [
     { name = "pydantic-ai", marker = "extra == 'ai'", specifier = ">=1.62.0" },
     { name = "pydantic-settings", specifier = ">=2.15.0" },
 ]
-provides-extras = ["sqlalchemy", "ai"]
+provides-extras = ["ai", "sqlalchemy"]
 
 [package.metadata.requires-dev]
 dev = [
