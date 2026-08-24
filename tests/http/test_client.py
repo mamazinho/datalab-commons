@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 from pydantic import BaseModel
 
-from datalab_commons.http.client import BaseAPIClient
+from datalab_commons.http.client import BaseAPIClient, UpstreamError, UpstreamUnreachable
 
 BASE_URL = "https://provider.test/v1"
 
@@ -98,15 +98,25 @@ class TestRequest:
         """É o que separa "a core-api devolveu 500" de um 500 genérico na hora de ler o alerta."""
         respx_mock.get(f"{BASE_URL}/things/").mock(return_value=httpx.Response(503, text="indisponível"))
 
-        with pytest.raises(HTTPException) as raised:
+        with pytest.raises(UpstreamError) as raised:
             await client.fetch("things/")
 
         assert raised.value.detail == f"{EchoAPIClient.name} returned 503: indisponível"
 
-    async def test_turns_a_transport_failure_into_a_bad_gateway_too(self, client, respx_mock):
+    async def test_carries_the_upstream_status_so_the_caller_can_react_to_it(self, client, respx_mock):
+        """Sem este campo, distinguir "recusou o chamador" de "quebrou" exigiria parsear a
+        mensagem — e quem chama trata os dois casos de formas diferentes."""
+        respx_mock.get(f"{BASE_URL}/things/").mock(return_value=httpx.Response(403, json={}))
+
+        with pytest.raises(UpstreamError) as raised:
+            await client.fetch("things/")
+
+        assert raised.value.upstream_status == 403
+
+    async def test_turns_a_transport_failure_into_a_distinct_exception(self, client, respx_mock):
         respx_mock.get(f"{BASE_URL}/things/").mock(side_effect=httpx.ConnectError("recusou"))
 
-        with pytest.raises(HTTPException) as raised:
+        with pytest.raises(UpstreamUnreachable) as raised:
             await client.fetch("things/")
 
         assert raised.value.status_code == HTTPStatus.BAD_GATEWAY

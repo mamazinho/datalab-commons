@@ -8,11 +8,28 @@ from pydantic import BaseModel
 from datalab_commons.converter import to_snake_case
 
 
+class UpstreamError(HTTPException):
+    """O serviço remoto respondeu, com erro. Quem chama costuma reagir ao status dele."""
+
+    def __init__(self, service: str, status_code: int, body: str) -> None:
+        self.service = service
+        self.upstream_status = status_code
+        super().__init__(HTTPStatus.BAD_GATEWAY, f"{service} returned {status_code}: {body}")
+
+
+class UpstreamUnreachable(HTTPException):
+    """O serviço remoto não respondeu: timeout, conexão recusada, DNS."""
+
+    def __init__(self, service: str, cause: Exception) -> None:
+        self.service = service
+        super().__init__(HTTPStatus.BAD_GATEWAY, f"{service} could not be reached: {cause}")
+
+
 class BaseAPIClient:
     """Cliente HTTP server-to-server entre os serviços da Datalab.
 
-    Toda falha vira 502 nomeando o serviço remoto: deixar o erro do httpx subir produziria um 500
-    opaco, que não diz qual das duas APIs quebrou.
+    Toda falha vira 502 nomeando o serviço remoto: repassar o status do outro serviço faria um 401
+    dele virar um 401 deste chamador, e o cliente deslogaria o usuário à toa.
     """
 
     name: str | None = None
@@ -31,10 +48,10 @@ class BaseAPIClient:
             try:
                 response = await http.request(method, path.lstrip("/"), **kwargs)
             except httpx.HTTPError as exception:
-                raise HTTPException(HTTPStatus.BAD_GATEWAY, f"{self.name} could not be reached: {exception}")
+                raise UpstreamUnreachable(str(self.name), exception) from exception
 
         if response.is_error:
-            raise HTTPException(HTTPStatus.BAD_GATEWAY, f"{self.name} returned {response.status_code}: {response.text}")
+            raise UpstreamError(str(self.name), response.status_code, response.text)
 
         return model.model_validate(response.json())
 
