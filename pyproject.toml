@@ -1,10 +1,16 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+# A versão sai da tag do git, não de um número escrito aqui: os dois serviços fixam a lib por
+# `@vX.Y.Z`, e um pyproject fora de sincronia com a tag faria o `service_version` de toda
+# telemetria mentir.
+[tool.hatch.version]
+source = "vcs"
 
 [project]
 name = "datalab-commons"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Observabilidade e utilitários compartilhados entre a Datalab API e a Datalab Core API."
 readme = "README.md"
 requires-python = ">=3.13"
