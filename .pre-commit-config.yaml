@@ -1,0 +1,54 @@
+default_language_version:
+  python: python3.13
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # Corretude do que entra no commit
+      - id: check-ast
+      - id: debug-statements
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-toml
+      - id: check-xml
+      - id: check-yaml
+        args: ["--allow-multiple-documents"]
+      # Higiene de arquivos
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: fix-byte-order-marker
+      - id: mixed-line-ending
+      - id: check-case-conflict
+      - id: check-symlinks
+      - id: check-added-large-files
+      # Segurança
+      - id: detect-private-key
+      - id: detect-aws-credentials
+        args: ["--allow-missing-credentials"]
+      # Integridade do repositório
+      - id: check-vcs-permalinks
+      - id: forbid-new-submodules
+      - id: no-commit-to-branch
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  # Auditoria de advisories nas dependências de produção.
+  # É um hook local porque o pip-audit precisa do uv.lock exportado como requirements — e só
+  # das deps de produção, sem as de dev. Roda apenas quando o lock ou o pyproject mudam.
+  - repo: local
+    hooks:
+      - id: pip-audit
+        name: pip-audit (advisories nas dependências)
+        language: system
+        pass_filenames: false
+        files: ^(uv\.lock|pyproject\.toml)$
+        verbose: true
+        entry: >
+          sh -c 'uv export --format requirements-txt --no-dev --no-emit-project --no-hashes --quiet
+          | uv run pip-audit --no-deps --disable-pip -r /dev/stdin'
