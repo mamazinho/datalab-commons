@@ -119,6 +119,28 @@ class TestLogPipeline:
         assert "item_id" not in conclusion
 
 
+class TestDistributedTracing:
+    @pytest.mark.parametrize(
+        ("configured", "expected"),
+        [
+            pytest.param("true", True, id="servico-interno-aceita"),
+            pytest.param("false", False, id="api-publica-recusa"),
+        ],
+    )
+    def test_repassa_a_decisao_de_aceitar_traceparent_de_entrada(
+        self, monkeypatch: pytest.MonkeyPatch, configured, expected
+    ):
+        """Ligado, o span da core-api entra no mesmo trace da datalab-api e a conversa aparece
+        inteira. Desligado numa API pública, qualquer cliente poderia injetar trace_id."""
+        monkeypatch.setenv("CONSOLE_SPANS", "false")
+        monkeypatch.setenv("DISTRIBUTED_TRACING", configured)
+        monkeypatch.delenv("LOGFIRE_TOKEN", raising=False)
+
+        configure_observability(SERVICE_NAME, "1.2.3")
+
+        assert logfire.DEFAULT_LOGFIRE_INSTANCE.config.distributed_tracing is expected
+
+
 class TestInstrumentFastapiApp:
     def test_instala_o_middleware_de_log(self, app):
         assert any(middleware.cls is RequestLoggingMiddleware for middleware in app.user_middleware)
