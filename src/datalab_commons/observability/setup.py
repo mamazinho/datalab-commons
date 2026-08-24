@@ -1,5 +1,5 @@
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
 import logfire
 from fastapi import FastAPI
@@ -14,8 +14,24 @@ from datalab_commons.observability.settings import ObservabilitySettings
 
 SCRUBBING_EXTRA_PATTERNS = ["x-provider-token", "x-api-key", "x-company-id"]
 
+# "internal": só é chamado por outro serviço nosso, então entra no trace de quem chamou.
+# "public": recebe tráfego de navegador; aceitar traceparent deixaria qualquer cliente
+# injetar trace_id e poluir os traces.
+Exposure = Literal["public", "internal"]
 
-def configure_observability(service_name: str, service_version: str) -> ObservabilitySettings:
+
+def configure_observability(
+    service_name: str,
+    service_version: str,
+    exposure: Exposure,
+) -> ObservabilitySettings:
+    """Configura a telemetria do serviço.
+
+    `exposure` não tem default de propósito: é a única decisão aqui que um serviço novo pode errar
+    em silêncio, e errar para os dois lados dói. Ela também não é env var porque é propriedade do
+    serviço, não do ambiente — como env var, some de um `.env` e o trace entre serviços quebra sem
+    nada reclamar.
+    """
     settings = ObservabilitySettings()
 
     logfire.configure(
@@ -24,7 +40,7 @@ def configure_observability(service_name: str, service_version: str) -> Observab
         environment=settings.environment,
         send_to_logfire="if-token-present",
         console=logfire.ConsoleOptions() if settings.console_spans else False,
-        distributed_tracing=settings.distributed_tracing,
+        distributed_tracing=exposure == "internal",
         sampling=logfire.SamplingOptions.level_or_duration(head=settings.trace_sample_rate),
         scrubbing=logfire.ScrubbingOptions(extra_patterns=SCRUBBING_EXTRA_PATTERNS),
         additional_span_processors=build_grafana_span_processors(settings),
