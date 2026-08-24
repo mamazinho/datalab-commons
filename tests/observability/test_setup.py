@@ -115,7 +115,7 @@ class TestLogPipeline:
     async def test_o_campo_da_linha_nao_vaza_para_os_outros_logs(self, client, observability):
         await client.get("/items/42")
 
-        conclusion = dict(records_named(observability, "Requisição concluída")[0].attributes)
+        conclusion = dict(records_named(observability, "Request completed")[0].attributes)
         assert "item_id" not in conclusion
 
 

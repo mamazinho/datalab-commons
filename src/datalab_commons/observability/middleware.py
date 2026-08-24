@@ -41,7 +41,7 @@ class RequestLoggingMiddleware:
             finally:
                 if scope["path"] not in self.excluded_paths:
                     logger.info(
-                        "Requisição concluída",
+                        "Request completed",
                         http_route=route_template(scope),
                         http_status=status_code,
                         duration_ms=round((perf_counter() - started_at) * 1000, 2),
