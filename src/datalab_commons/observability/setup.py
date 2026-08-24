@@ -58,6 +58,7 @@ def instrument_mcp() -> None:
 
 def instrument_agents(settings: ObservabilitySettings | None = None) -> None:
     settings = settings or ObservabilitySettings()
-    # event_mode fixo: em "logs" o texto das conversas viraria log record e vazaria para o Loki.
-    logfire.instrument_pydantic_ai(include_content=settings.capture_ai_content, event_mode="attributes")
+    # O conteúdo das conversas viaja como atributo dos spans do scope `pydantic-ai`, que o
+    # exportador do Grafana barra — por isso ele fica só no Logfire.
+    logfire.instrument_pydantic_ai(include_content=settings.capture_ai_content)
     instrument_mcp()

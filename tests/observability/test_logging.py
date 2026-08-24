@@ -4,9 +4,12 @@ import pytest
 
 from datalab_commons.observability.context import log_context
 from datalab_commons.observability.logging import (
+    CONSOLE_FORMAT,
     QUIET_LOGGERS,
+    SILENT_LOGGERS,
     UVICORN_LOGGERS,
     BaggageFilter,
+    ConsoleFormatter,
     get_logger,
     setup_logging,
 )
@@ -52,10 +55,22 @@ class TestSetupLogging:
         assert logging.getLogger(name).propagate is True
 
     @pytest.mark.parametrize("name", [pytest.param(name, id=name) for name in QUIET_LOGGERS])
-    def test_cala_as_bibliotecas_que_ja_viram_span(self, name):
+    def test_cala_as_bibliotecas_que_ja_viram_span_ou_exportam_telemetria(self, name):
+        """O `urllib3` é o transporte do exportador OTLP: em DEBUG ele loga um POST a cada lote
+        de logs enviado, ou seja, gera log por exportar log."""
         setup_logging("INFO")
 
         assert logging.getLogger(name).level == logging.WARNING
+
+    @pytest.mark.parametrize("name", [pytest.param(name, id=name) for name in SILENT_LOGGERS])
+    def test_silencia_o_access_log_do_uvicorn(self, name):
+        """O log de conclusão do middleware diz o mesmo e mais. Religar o propagate dele, como se
+        fazia com os outros loggers do uvicorn, desfazia até o `--no-access-log`."""
+        logging.getLogger(name).propagate = True
+
+        setup_logging("INFO")
+
+        assert logging.getLogger(name).propagate is False
 
     def test_aplica_o_nivel_pedido(self):
         setup_logging("DEBUG")
@@ -69,6 +84,26 @@ class TestSetupLogging:
 
         handlers = logging.getLogger().handlers
         assert handlers and all(any(isinstance(f, BaggageFilter) for f in h.filters) for h in handlers)
+
+
+class TestConsoleFormatter:
+    def formatted(self, **fields) -> str:
+        record = logging.LogRecord("teste", logging.INFO, __file__, 1, "Requisição concluída", None, None)
+        record.__dict__.update(fields)
+        return ConsoleFormatter(CONSOLE_FORMAT).format(record)
+
+    def test_mostra_os_campos_estruturados_no_terminal(self):
+        """Sem isto o mesmo log diz menos no terminal do que no Grafana, e debugar local vira
+        adivinhação sobre o que foi exportado."""
+        assert "http_status=200" in self.formatted(http_status=200)
+
+    def test_mantem_a_linha_limpa_quando_nao_ha_campos(self):
+        assert self.formatted().endswith("Requisição concluída")
+
+    def test_ordena_os_campos_para_a_linha_nao_dancar_entre_logs(self):
+        line = self.formatted(http_status=200, company_id="empresa-1")
+
+        assert line.index("company_id=") < line.index("http_status=")
 
 
 class TestBaggageFilter:

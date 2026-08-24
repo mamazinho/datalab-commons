@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 import pytest
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.responses import StreamingResponse
 from httpx import ASGITransport, AsyncClient
 
@@ -43,6 +43,13 @@ def recorded_logs():
 def app() -> FastAPI:
     application = FastAPI()
     logger = get_logger("teste.rota")
+    prefixed = APIRouter(prefix="/coisas")
+
+    @prefixed.get("/{item_id}/")
+    async def prefixed_item(item_id: int):
+        return {"item_id": item_id}
+
+    application.include_router(prefixed, prefix="/v1")
 
     @application.get("/items/{item_id}")
     async def read_item(item_id: int):
@@ -96,6 +103,18 @@ class TestCompletionLog:
 
         record = completion_log(recorded_logs)
         assert (record.http_method, record.http_path) == ("GET", "/items/42")
+
+    async def test_mantem_o_prefixo_do_router_na_rota(self, client, recorded_logs):
+        """A partir do FastAPI 0.141 o `route.path` é relativo ao router: sozinho ele diria
+        `/coisas/{item_id}/`, e dois routers com a mesma rota interna virariam a mesma série."""
+        await client.get("/v1/coisas/7/")
+
+        assert completion_log(recorded_logs).http_route == "/v1/coisas/{item_id}/"
+
+    async def test_sem_rota_casada_registra_o_caminho_cru(self, client, recorded_logs):
+        await client.get("/nao/existe/")
+
+        assert completion_log(recorded_logs).http_route == "/nao/existe/"
 
     async def test_mede_a_resposta_em_streaming_ate_o_ultimo_pedaco(self, client, recorded_logs):
         """Um middleware que medisse só até a resposta começar marcaria ~0ms nas rotas de chat,
