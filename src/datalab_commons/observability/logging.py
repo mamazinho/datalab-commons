@@ -42,7 +42,7 @@ class BaggageFilter(logging.Filter):
 
 
 class ConsoleFormatter(logging.Formatter):
-    """Mostra no terminal os campos que o Grafana receberia, para o log dizer o mesmo nos dois."""
+    """Mostra no terminal os campos que o Logfire receberia, para o log dizer o mesmo nos dois."""
 
     def format(self, record: logging.LogRecord) -> str:
         line = super().format(record)
@@ -75,8 +75,6 @@ def setup_logging(level: str | int, logger_provider: LoggerProvider | None = Non
             logger_provider=logger_provider,
             log_code_attributes=True,
         )
-        # Sem isto o corpo do log exportado sai formatado ("INFO:modulo:mensagem"); o nível e o
-        # logger já viajam como campos próprios, e o Loki quer só a mensagem.
         otel_handler.setFormatter(logging.Formatter("%(message)s"))
         handlers.append(otel_handler)
 

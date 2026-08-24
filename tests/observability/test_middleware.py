@@ -92,7 +92,7 @@ class TestCompletionLog:
 
     async def test_registra_o_status_e_a_rota_com_o_parametro_no_lugar_do_valor(self, client, recorded_logs):
         """A rota vai no formato `/items/{item_id}`: com o id cru cada requisição viraria uma
-        série própria no Grafana e agrupar por rota deixaria de funcionar."""
+        série própria e agrupar por rota deixaria de funcionar."""
         await client.get("/items/42")
 
         record = completion_log(recorded_logs)
@@ -180,7 +180,7 @@ class TestNonHttpScopes:
 class TestTraceHeader:
     async def test_sem_instrumentacao_nao_inventa_um_id(self, client):
         """Fora de um span o trace_id é inválido; devolvê-lo daria ao suporte um id que não acha
-        nada nem no Grafana nem no Logfire."""
+        nada no Logfire."""
         response = await client.get("/items/42")
 
         assert TRACE_HEADER not in response.headers

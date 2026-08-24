@@ -37,7 +37,7 @@ class RecordingHandler(logging.Handler):
 class TestSetupLogging:
     def test_instala_o_handler_mesmo_com_o_root_ja_ocupado(self):
         """O uvicorn instala um handler no root antes da aplicação subir. Sem `force=True` o
-        `basicConfig` vira no-op e nenhum log da aplicação chega ao Grafana."""
+        `basicConfig` vira no-op e nenhum log da aplicação sai do processo."""
         logging.getLogger().addHandler(logging.NullHandler())
 
         setup_logging("INFO")
@@ -78,7 +78,7 @@ class TestSetupLogging:
         assert logging.getLogger().level == logging.DEBUG
 
     def test_poe_o_filtro_de_contexto_em_todo_handler(self):
-        """Inclusive no do console: sem isto os campos do `log_context` apareceriam no Grafana mas
+        """Inclusive no do console: sem isto os campos do `log_context` apareceriam no Logfire mas
         sumiriam do terminal, e o mesmo log diria coisas diferentes em cada lugar."""
         setup_logging("INFO")
 
@@ -93,7 +93,7 @@ class TestConsoleFormatter:
         return ConsoleFormatter(CONSOLE_FORMAT).format(record)
 
     def test_mostra_os_campos_estruturados_no_terminal(self):
-        """Sem isto o mesmo log diz menos no terminal do que no Grafana, e debugar local vira
+        """Sem isto o mesmo log diz menos no terminal do que no Logfire, e debugar local vira
         adivinhação sobre o que foi exportado."""
         assert "http_status=200" in self.formatted(http_status=200)
 

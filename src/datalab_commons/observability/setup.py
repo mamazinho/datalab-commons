@@ -1,37 +1,17 @@
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Any
 
 import logfire
 from fastapi import FastAPI
 
-from datalab_commons.observability.exporters import (
-    build_grafana_log_processors,
-    build_grafana_span_processors,
-)
 from datalab_commons.observability.logging import setup_logging
 from datalab_commons.observability.middleware import RequestLoggingMiddleware
 from datalab_commons.observability.settings import ObservabilitySettings
 
 SCRUBBING_EXTRA_PATTERNS = ["x-provider-token", "x-api-key", "x-company-id"]
 
-# "internal": só é chamado por outro serviço nosso, então entra no trace de quem chamou.
-# "public": recebe tráfego de navegador; aceitar traceparent deixaria qualquer cliente
-# injetar trace_id e poluir os traces.
-Exposure = Literal["public", "internal"]
 
-
-def configure_observability(
-    service_name: str,
-    service_version: str,
-    exposure: Exposure,
-) -> ObservabilitySettings:
-    """Configura a telemetria do serviço.
-
-    `exposure` não tem default de propósito: é a única decisão aqui que um serviço novo pode errar
-    em silêncio, e errar para os dois lados dói. Ela também não é env var porque é propriedade do
-    serviço, não do ambiente — como env var, some de um `.env` e o trace entre serviços quebra sem
-    nada reclamar.
-    """
+def configure_observability(service_name: str, service_version: str) -> ObservabilitySettings:
     settings = ObservabilitySettings()
 
     logfire.configure(
@@ -40,11 +20,12 @@ def configure_observability(
         environment=settings.environment,
         send_to_logfire="if-token-present",
         console=logfire.ConsoleOptions() if settings.console_spans else False,
-        distributed_tracing=exposure == "internal",
+        # Todo serviço aceita traceparent de entrada: é o que costura o browser, esta API e a
+        # core-api num trace só. Na API pública isso deixa um estranho pendurar a requisição dele
+        # numa árvore escolhida — polui, não vaza.
+        distributed_tracing=True,
         sampling=logfire.SamplingOptions.level_or_duration(head=settings.trace_sample_rate),
         scrubbing=logfire.ScrubbingOptions(extra_patterns=SCRUBBING_EXTRA_PATTERNS),
-        additional_span_processors=build_grafana_span_processors(settings),
-        advanced=logfire.AdvancedOptions(log_record_processors=build_grafana_log_processors(settings)),
     )
 
     setup_logging(settings.log_level, logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_logger_provider())
@@ -75,7 +56,5 @@ def instrument_mcp() -> None:
 
 def instrument_agents(settings: ObservabilitySettings | None = None) -> None:
     settings = settings or ObservabilitySettings()
-    # O conteúdo das conversas viaja como atributo dos spans do scope `pydantic-ai`, que o
-    # exportador do Grafana barra — por isso ele fica só no Logfire.
     logfire.instrument_pydantic_ai(include_content=settings.capture_ai_content)
     instrument_mcp()
