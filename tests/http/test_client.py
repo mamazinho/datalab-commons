@@ -85,8 +85,8 @@ class TestRequest:
         ],
     )
     async def test_turns_any_error_status_into_a_bad_gateway(self, client, respx_mock, status_code):
-        """Qualquer falha do serviço remoto vira 502, e não o status dele: um 401 vindo da outra
-        API não é um 401 deste chamador, e repassá-lo faria o cliente deslogar o usuário à toa."""
+        """Any upstream failure becomes a 502, not its own status: a 401 coming from the other API
+        is not a 401 from this caller, and forwarding it would log the user out for nothing."""
         respx_mock.get(f"{BASE_URL}/things/").mock(return_value=httpx.Response(status_code, json={}))
 
         with pytest.raises(HTTPException) as raised:
@@ -95,17 +95,18 @@ class TestRequest:
         assert raised.value.status_code == HTTPStatus.BAD_GATEWAY
 
     async def test_names_the_remote_service_and_its_status_in_the_error(self, client, respx_mock):
-        """É o que separa "a core-api devolveu 500" de um 500 genérico na hora de ler o alerta."""
-        respx_mock.get(f"{BASE_URL}/things/").mock(return_value=httpx.Response(503, text="indisponível"))
+        """It is what separates "the core-api returned 500" from a generic 500 when reading the
+        alert."""
+        respx_mock.get(f"{BASE_URL}/things/").mock(return_value=httpx.Response(503, text="unavailable"))
 
         with pytest.raises(UpstreamError) as raised:
             await client.fetch("things/")
 
-        assert raised.value.detail == f"{EchoAPIClient.name} returned 503: indisponível"
+        assert raised.value.detail == f"{EchoAPIClient.name} returned 503: unavailable"
 
     async def test_carries_the_upstream_status_so_the_caller_can_react_to_it(self, client, respx_mock):
-        """Sem este campo, distinguir "recusou o chamador" de "quebrou" exigiria parsear a
-        mensagem — e quem chama trata os dois casos de formas diferentes."""
+        """Without this field, telling "it rejected the caller" apart from "it broke" would mean
+        parsing the message — and callers handle the two cases differently."""
         respx_mock.get(f"{BASE_URL}/things/").mock(return_value=httpx.Response(403, json={}))
 
         with pytest.raises(UpstreamError) as raised:
@@ -114,7 +115,7 @@ class TestRequest:
         assert raised.value.upstream_status == 403
 
     async def test_turns_a_transport_failure_into_a_distinct_exception(self, client, respx_mock):
-        respx_mock.get(f"{BASE_URL}/things/").mock(side_effect=httpx.ConnectError("recusou"))
+        respx_mock.get(f"{BASE_URL}/things/").mock(side_effect=httpx.ConnectError("refused"))
 
         with pytest.raises(UpstreamUnreachable) as raised:
             await client.fetch("things/")
