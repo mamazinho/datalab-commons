@@ -7,23 +7,23 @@ from datalab_commons.observability.logging import get_baggage
 
 
 class TestLogContext:
-    def test_prende_os_campos_dentro_do_bloco(self):
-        with log_context(company_id="empresa-1"):
-            assert get_baggage() == {"company_id": "empresa-1"}
+    def test_binds_the_fields_inside_the_block(self):
+        with log_context(company_id="company-1"):
+            assert get_baggage() == {"company_id": "company-1"}
 
-    def test_solta_os_campos_ao_sair(self):
-        with log_context(company_id="empresa-1"):
+    def test_releases_the_fields_on_exit(self):
+        with log_context(company_id="company-1"):
             pass
 
         assert get_baggage() == {}
 
-    def test_acumula_com_o_contexto_de_fora(self):
-        with log_context(company_id="empresa-1"), log_context(chat_id="chat-9"):
-            assert get_baggage() == {"company_id": "empresa-1", "chat_id": "chat-9"}
+    def test_stacks_onto_the_outer_context(self):
+        with log_context(company_id="company-1"), log_context(chat_id="chat-9"):
+            assert get_baggage() == {"company_id": "company-1", "chat_id": "chat-9"}
 
-    def test_converte_o_valor_para_texto(self):
-        """Os ids do projeto são UUID, e o Baggage do OpenTelemetry só aceita string — sem a
-        conversão cada `log_context` sairia com um warning."""
+    def test_converts_the_value_to_text(self):
+        """The project ids are UUIDs and the OpenTelemetry Baggage only accepts strings — without
+        the conversion every `log_context` would emit a warning."""
         company_id = uuid.uuid4()
 
         with log_context(company_id=company_id):
@@ -32,16 +32,16 @@ class TestLogContext:
     @pytest.mark.parametrize(
         "fields",
         [
-            pytest.param({"company_id": None}, id="um-campo-nulo"),
-            pytest.param({}, id="nenhum-campo"),
+            pytest.param({"company_id": None}, id="a-null-field"),
+            pytest.param({}, id="no-fields"),
         ],
     )
-    def test_ignora_campo_sem_valor(self, fields):
+    def test_ignores_a_field_without_a_value(self, fields):
         with log_context(**fields):
             assert get_baggage() == {}
 
-    def test_solta_os_campos_mesmo_quando_o_bloco_levanta(self):
-        with pytest.raises(RuntimeError), log_context(company_id="empresa-1"):
-            raise RuntimeError("quebrou")
+    def test_releases_the_fields_even_when_the_block_raises(self):
+        with pytest.raises(RuntimeError), log_context(company_id="company-1"):
+            raise RuntimeError("boom")
 
         assert get_baggage() == {}

@@ -35,9 +35,9 @@ class RecordingHandler(logging.Handler):
 
 
 class TestSetupLogging:
-    def test_instala_o_handler_mesmo_com_o_root_ja_ocupado(self):
-        """O uvicorn instala um handler no root antes da aplicação subir. Sem `force=True` o
-        `basicConfig` vira no-op e nenhum log da aplicação sai do processo."""
+    def test_installs_the_handler_even_when_the_root_is_already_taken(self):
+        """Uvicorn installs a handler on the root before the application boots. Without
+        `force=True` the `basicConfig` is a no-op and no application log leaves the process."""
         logging.getLogger().addHandler(logging.NullHandler())
 
         setup_logging("INFO")
@@ -45,9 +45,9 @@ class TestSetupLogging:
         assert logging.getLogger().level == logging.INFO
 
     @pytest.mark.parametrize("name", [pytest.param(name, id=name) for name in UVICORN_LOGGERS])
-    def test_religa_o_propagate_dos_loggers_do_uvicorn(self, name):
-        """O uvicorn desliga o propagate deles; sem religar, "Application startup complete" e os
-        erros de boot nunca saem do processo."""
+    def test_turns_propagate_back_on_for_the_uvicorn_loggers(self, name):
+        """Uvicorn turns their propagate off; without turning it back on, "Application startup
+        complete" and the boot errors never leave the process."""
         logging.getLogger(name).propagate = False
 
         setup_logging("INFO")
@@ -55,31 +55,32 @@ class TestSetupLogging:
         assert logging.getLogger(name).propagate is True
 
     @pytest.mark.parametrize("name", [pytest.param(name, id=name) for name in QUIET_LOGGERS])
-    def test_cala_as_bibliotecas_que_ja_viram_span_ou_exportam_telemetria(self, name):
-        """O `urllib3` é o transporte do exportador OTLP: em DEBUG ele loga um POST a cada lote
-        de logs enviado, ou seja, gera log por exportar log."""
+    def test_quiets_the_libraries_that_already_become_spans_or_export_telemetry(self, name):
+        """`urllib3` is the transport of the OTLP exporter: on DEBUG it logs a POST for every batch
+        of logs sent, that is, it logs about exporting logs."""
         setup_logging("INFO")
 
         assert logging.getLogger(name).level == logging.WARNING
 
     @pytest.mark.parametrize("name", [pytest.param(name, id=name) for name in SILENT_LOGGERS])
-    def test_silencia_o_access_log_do_uvicorn(self, name):
-        """O log de conclusão do middleware diz o mesmo e mais. Religar o propagate dele, como se
-        fazia com os outros loggers do uvicorn, desfazia até o `--no-access-log`."""
+    def test_silences_the_uvicorn_access_log(self, name):
+        """The middleware's completion log says the same and more. Turning its propagate back on,
+        as was done for the other uvicorn loggers, even undid `--no-access-log`."""
         logging.getLogger(name).propagate = True
 
         setup_logging("INFO")
 
         assert logging.getLogger(name).propagate is False
 
-    def test_aplica_o_nivel_pedido(self):
+    def test_applies_the_requested_level(self):
         setup_logging("DEBUG")
 
         assert logging.getLogger().level == logging.DEBUG
 
-    def test_poe_o_filtro_de_contexto_em_todo_handler(self):
-        """Inclusive no do console: sem isto os campos do `log_context` apareceriam no Logfire mas
-        sumiriam do terminal, e o mesmo log diria coisas diferentes em cada lugar."""
+    def test_puts_the_context_filter_on_every_handler(self):
+        """Including the console one: without this the `log_context` fields would show up in
+        Logfire but vanish from the terminal, and the same log would say different things in each
+        place."""
         setup_logging("INFO")
 
         handlers = logging.getLogger().handlers
@@ -88,44 +89,44 @@ class TestSetupLogging:
 
 class TestConsoleFormatter:
     def formatted(self, **fields) -> str:
-        record = logging.LogRecord("teste", logging.INFO, __file__, 1, "Request completed", None, None)
+        record = logging.LogRecord("test", logging.INFO, __file__, 1, "Request completed", None, None)
         record.__dict__.update(fields)
         return ConsoleFormatter(CONSOLE_FORMAT).format(record)
 
-    def test_mostra_os_campos_estruturados_no_terminal(self):
-        """Sem isto o mesmo log diz menos no terminal do que no Logfire, e debugar local vira
-        adivinhação sobre o que foi exportado."""
+    def test_shows_the_structured_fields_on_the_terminal(self):
+        """Without this the same log says less on the terminal than in Logfire, and debugging
+        locally becomes guesswork about what was exported."""
         assert "http_status=200" in self.formatted(http_status=200)
 
-    def test_mantem_a_linha_limpa_quando_nao_ha_campos(self):
+    def test_keeps_the_line_clean_when_there_are_no_fields(self):
         assert self.formatted().endswith("Request completed")
 
-    def test_ordena_os_campos_para_a_linha_nao_dancar_entre_logs(self):
-        line = self.formatted(http_status=200, company_id="empresa-1")
+    def test_sorts_the_fields_so_the_line_does_not_dance_between_logs(self):
+        line = self.formatted(http_status=200, company_id="company-1")
 
         assert line.index("company_id=") < line.index("http_status=")
 
 
 class TestBaggageFilter:
-    def test_cola_os_campos_do_contexto_no_registro(self):
-        record = logging.LogRecord("teste", logging.INFO, __file__, 1, "mensagem", None, None)
+    def test_attaches_the_context_fields_to_the_record(self):
+        record = logging.LogRecord("test", logging.INFO, __file__, 1, "message", None, None)
 
-        with log_context(company_id="empresa-1"):
+        with log_context(company_id="company-1"):
             BaggageFilter().filter(record)
 
-        assert record.company_id == "empresa-1"
+        assert record.company_id == "company-1"
 
-    def test_nao_sobrescreve_campo_que_o_registro_ja_tem(self):
-        record = logging.LogRecord("teste", logging.INFO, __file__, 1, "mensagem", None, None)
-        record.company_id = "do-proprio-log"
+    def test_does_not_overwrite_a_field_the_record_already_has(self):
+        record = logging.LogRecord("test", logging.INFO, __file__, 1, "message", None, None)
+        record.company_id = "from-the-log-itself"
 
-        with log_context(company_id="do-contexto"):
+        with log_context(company_id="from-the-context"):
             BaggageFilter().filter(record)
 
-        assert record.company_id == "do-proprio-log"
+        assert record.company_id == "from-the-log-itself"
 
-    def test_fora_de_qualquer_contexto_nao_adiciona_nada(self):
-        record = logging.LogRecord("teste", logging.INFO, __file__, 1, "mensagem", None, None)
+    def test_adds_nothing_outside_of_any_context(self):
+        record = logging.LogRecord("test", logging.INFO, __file__, 1, "message", None, None)
 
         BaggageFilter().filter(record)
 
@@ -136,7 +137,7 @@ class TestStructuredLogger:
     @pytest.fixture
     def recorded(self):
         handler = RecordingHandler()
-        logger = logging.getLogger("teste.estruturado")
+        logger = logging.getLogger("test.structured")
         previous_handlers, previous_level, previous_propagate = list(logger.handlers), logger.level, logger.propagate
 
         logger.handlers = [handler]
@@ -147,25 +148,25 @@ class TestStructuredLogger:
         logger.handlers, logger.propagate = previous_handlers, previous_propagate
         logger.setLevel(previous_level)
 
-    def test_move_os_kwargs_para_campos_do_registro(self, recorded):
-        get_logger("teste.estruturado").info("Request completed", http_status=200, duration_ms=12.3)
+    def test_moves_the_kwargs_into_record_fields(self, recorded):
+        get_logger("test.structured").info("Request completed", http_status=200, duration_ms=12.3)
 
         record = recorded.records[0]
         assert (record.http_status, record.duration_ms) == (200, 12.3)
 
-    def test_mantem_a_mensagem_sem_interpolar_os_campos(self, recorded):
-        get_logger("teste.estruturado").info("Request completed", http_status=200)
+    def test_keeps_the_message_without_interpolating_the_fields(self, recorded):
+        get_logger("test.structured").info("Request completed", http_status=200)
 
         assert recorded.records[0].getMessage() == "Request completed"
 
-    def test_preserva_os_argumentos_proprios_do_logging(self, recorded):
-        """`exc_info` precisa continuar chegando ao logging como argumento, não virar campo —
-        senão o traceback some do log de erro."""
+    def test_preserves_the_logging_module_own_arguments(self, recorded):
+        """`exc_info` has to keep reaching logging as an argument instead of becoming a field —
+        otherwise the traceback disappears from the error log."""
         try:
-            raise ValueError("quebrou")
+            raise ValueError("boom")
         except ValueError:
-            get_logger("teste.estruturado").error("Falhou", exc_info=True, company_id="empresa-1")
+            get_logger("test.structured").error("Failed", exc_info=True, company_id="company-1")
 
         record = recorded.records[0]
         assert record.exc_info is not None
-        assert record.company_id == "empresa-1"
+        assert record.company_id == "company-1"

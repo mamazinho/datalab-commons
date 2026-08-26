@@ -11,7 +11,7 @@ from datalab_commons.observability.logging import get_logger
 from datalab_commons.observability.middleware import TRACE_HEADER, RequestLoggingMiddleware
 from datalab_commons.observability.setup import configure_observability, instrument_fastapi_app
 
-SERVICE_NAME = "servico-de-teste"
+SERVICE_NAME = "test-service"
 
 
 class CapturingLogProcessor(LogRecordProcessor):
@@ -49,12 +49,12 @@ def observability(monkeypatch: pytest.MonkeyPatch):
 @pytest.fixture
 def app(observability) -> FastAPI:
     application = FastAPI()
-    logger = get_logger("teste.rota")
+    logger = get_logger("test.route")
 
     @application.get("/items/{item_id}")
     async def read_item(item_id: int):
-        with log_context(company_id="empresa-1"):
-            logger.info("Buscando item", item_id=item_id)
+        with log_context(company_id="company-1"):
+            logger.info("Fetching item", item_id=item_id)
         return {"item_id": item_id}
 
     @application.get("/health/")
@@ -76,42 +76,44 @@ def records_named(captured, message: str) -> list:
 
 
 class TestLogPipeline:
-    """Os logs precisam sair como LogRecord do OpenTelemetry, e não como span. Se isto quebrar,
-    eles viram spans de duração zero e some a tela de logs."""
+    """The logs have to come out as OpenTelemetry LogRecords, not as spans. If this breaks, they
+    turn into zero-duration spans and the logs screen goes away."""
 
-    async def test_o_log_da_aplicacao_chega_ao_pipeline_otel(self, client, observability):
+    async def test_the_application_log_reaches_the_otel_pipeline(self, client, observability):
         await client.get("/items/42")
 
-        assert records_named(observability, "Buscando item")
+        assert records_named(observability, "Fetching item")
 
-    async def test_o_corpo_do_log_e_so_a_mensagem(self, client, observability):
-        """Formatado viria "INFO:teste.rota:Buscando item"; o nível e o logger já são campos
-        próprios, e repeti-los no corpo atrapalha buscar por mensagem."""
+    async def test_the_log_body_is_only_the_message(self, client, observability):
+        """Formatted it would read "INFO:test.route:Fetching item"; the level and the logger are
+        already fields of their own, and repeating them in the body gets in the way of searching by
+        message."""
         await client.get("/items/42")
 
         bodies = [record.body for record in observability.records]
-        assert "Buscando item" in bodies
+        assert "Fetching item" in bodies
 
-    async def test_o_log_carrega_o_trace_id_do_request(self, client, observability):
+    async def test_the_log_carries_the_trace_id_of_the_request(self, client, observability):
         await client.get("/items/42")
 
-        assert records_named(observability, "Buscando item")[0].trace_id
+        assert records_named(observability, "Fetching item")[0].trace_id
 
-    async def test_o_trace_id_do_log_e_o_mesmo_devolvido_no_header(self, client, observability):
-        """É o que o suporte usa: com o header em mãos, acha-se o trace inteiro no Logfire."""
+    async def test_the_log_trace_id_is_the_one_returned_in_the_header(self, client, observability):
+        """It is what support uses: with the header in hand, the whole trace can be found in
+        Logfire."""
         response = await client.get("/items/42")
 
-        record = records_named(observability, "Buscando item")[0]
+        record = records_named(observability, "Fetching item")[0]
         assert response.headers[TRACE_HEADER] == f"{record.trace_id:032x}"
 
-    async def test_o_log_carrega_os_campos_do_contexto_e_os_da_linha(self, client, observability):
+    async def test_the_log_carries_both_the_context_fields_and_the_call_site_ones(self, client, observability):
         await client.get("/items/42")
 
-        attributes = dict(records_named(observability, "Buscando item")[0].attributes)
-        assert attributes["company_id"] == "empresa-1"
+        attributes = dict(records_named(observability, "Fetching item")[0].attributes)
+        assert attributes["company_id"] == "company-1"
         assert attributes["item_id"] == 42
 
-    async def test_o_campo_da_linha_nao_vaza_para_os_outros_logs(self, client, observability):
+    async def test_the_call_site_field_does_not_leak_into_the_other_logs(self, client, observability):
         await client.get("/items/42")
 
         conclusion = dict(records_named(observability, "Request completed")[0].attributes)
@@ -119,24 +121,24 @@ class TestLogPipeline:
 
 
 class TestDistributedTracing:
-    def test_aceita_traceparent_de_entrada(self, observability):
-        """É o que junta navegador, esta API e a core-api num trace só. Desligado, cada processo
-        abre o próprio trace e o fluxo inteiro deixa de ser visível de uma vez."""
+    def test_accepts_an_incoming_traceparent(self, observability):
+        """It is what joins the browser, this API and the core-api into a single trace. Turned off,
+        each process opens its own trace and the whole flow stops being visible at once."""
         assert logfire.DEFAULT_LOGFIRE_INSTANCE.config.distributed_tracing is True
 
 
 class TestInstrumentFastapiApp:
-    def test_instala_o_middleware_de_log(self, app):
+    def test_installs_the_logging_middleware(self, app):
         assert any(middleware.cls is RequestLoggingMiddleware for middleware in app.user_middleware)
 
-    async def test_a_rota_excluida_nao_recebe_trace(self, client):
-        """O healthcheck do balanceador bate a cada poucos segundos: instrumentá-lo encheria a
-        cota de traces que não dizem nada."""
+    async def test_the_excluded_route_gets_no_trace(self, client):
+        """The load balancer healthcheck hits every few seconds: instrumenting it would fill the
+        trace quota with traces that say nothing."""
         response = await client.get("/health/")
 
         assert TRACE_HEADER not in response.headers
 
-    async def test_a_rota_normal_recebe_trace(self, client):
+    async def test_the_regular_route_gets_a_trace(self, client):
         response = await client.get("/items/42")
 
         assert response.headers[TRACE_HEADER]
