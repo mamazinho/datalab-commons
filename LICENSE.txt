@@ -1,0 +1,14 @@
+PROPRIETARY LICENSE
+
+Copyright (c) 2026 Matheus Oliveira Tessaroli. All rights reserved.
+
+Este software e todo o seu código-fonte são de propriedade exclusiva e confidencial de Matheus Oliveira Tessaroli. 
+
+A autorização de uso atual é estritamente limitada a fins de teste, homologação e validação de modelo de negócio pelos parceiros autorizados. Esta autorização não constitui, sob nenhuma hipótese:
+1. Cessão de direitos autorais ou de propriedade intelectual;
+2. Licença de uso comercial permanente;
+3. Transferência de posse do código-fonte.
+
+A propriedade integral deste software será transferida exclusivamente mediante a formalização e assinatura do Termo de Cessão de Propriedade Intelectual vinculado à constituição da nova sociedade empresarial (SaaS).
+
+Fica proibida a reprodução, distribuição, modificação ou comercialização não autorizada deste código por terceiros ou por empresas vinculadas aos parceiros de teste.
