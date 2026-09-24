@@ -68,9 +68,39 @@ CAPTURE_AI_CONTENT=true
 TRACE_SAMPLE_RATE=1.0
 ```
 
+## Arquivos
+
+`datalab_commons.files` concentra as bibliotecas de manipulação de arquivo e expõe só as funções
+que os serviços usam. Extra `files`.
+
+```python
+from datalab_commons.files import (
+    content_disposition,   # header do download, com nome acentuado
+    decode_text,           # bytes -> str (utf-8, cp1252, latin-1)
+    extract_text,          # docx, xlsx, pptx e texto -> markdown, para o modelo que não lê o formato
+    guess_media_type,      # content-type do navegador ou extensão do nome, Office incluso
+    normalize_filename,    # nome seguro, com extensão e limite de 255
+    to_utf8,               # reencoda só o que não é utf-8
+)
+```
+
+Constantes de apoio: `IMAGE_MEDIA_TYPES`, `TEXT_MEDIA_TYPES`, `OFFICE_MEDIA_TYPES`,
+`EXTRACTABLE_MEDIA_TYPES`, e os predicados `is_text_media_type`, `is_image_media_type` e
+`is_office_media_type`. `extract_text` levanta `UnsupportedFileType` no formato que não sabe ler.
+
 ## Desenvolvimento
 
 ```bash
 make test
 make lint
+```
+
+## Release
+
+A versão mora no `pyproject.toml` e cada uma tem sua seção no [CHANGES.rst](CHANGES.rst).
+
+```bash
+uv version --bump minor   # ou patch/major
+# escreva a seção da nova versão no CHANGES.rst e faça o commit na main
+make release              # publica a tag v<version> com as notas do CHANGES.rst
 ```

@@ -1,8 +1,9 @@
 .PHONY: help lint test update-deps delete_pycache release
 
-# A lib não tem deploy: a release é a tag. Os dois serviços fixam `@vX.Y.Z` no pyproject, e a
-# versão do pacote sai da própria tag (hatch-vcs), então não há número para bumpar aqui.
-NEXT_TAG = $(shell ./scripts/next-tag.sh $(type))
+# A lib não tem deploy: a release é a tag. Os dois serviços fixam `@vX.Y.Z` no pyproject deles, e
+# a tag sai da `version` do pyproject daqui — bumpe com `uv version --bump patch|minor|major`.
+VERSION = $(shell uv version --short)
+TAG = v$(VERSION)
 
 # `no-commit-to-branch` reprova qualquer coisa rodando na main — e a release sai da main por
 # desenho. Os outros hooks seguem valendo.
@@ -25,10 +26,7 @@ update-deps: ## Atualiza as dependências
 delete_pycache:
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
 
-release: ## Publica uma versão da lib (Ex: make release type=fix, ou feat/major)
-	@if [ -z "$(type)" ]; then \
-		echo "❌ Informe o tipo. Ex: make release type=fix (ou feat/major)"; exit 1; \
-	fi
+release: ## Publica a versão do pyproject como tag, com as notas do CHANGES.rst
 	@if [ -n "$$(git status --porcelain)" ]; then \
 		echo "❌ Árvore suja: a tag apontaria para algo diferente do que está commitado."; exit 1; \
 	fi
@@ -39,14 +37,21 @@ release: ## Publica uma versão da lib (Ex: make release type=fix, ou feat/major
 	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
 		echo "❌ Sua main difere da origin/main. Dê pull/push antes de taguear."; exit 1; \
 	fi
+	@git fetch --quiet --tags origin
+	@if git rev-parse -q --verify "refs/tags/$(TAG)" >/dev/null; then \
+		echo "❌ $(TAG) já existe. Bumpe a versão: uv version --bump patch|minor|major"; exit 1; \
+	fi
+	@if ! ./scripts/release-notes.sh $(VERSION) >/dev/null; then \
+		echo "❌ CHANGES.rst não tem a seção $(VERSION). Descreva o que muda antes de publicar."; exit 1; \
+	fi
 	@echo "🧪 Validando antes de publicar — uma release quebrada quebra as duas APIs..."
 	@$(MAKE) --no-print-directory test
 	@SKIP=$(RELEASE_SKIP_HOOKS) uv run pre-commit run -a
-	@echo "🏷️  Publicando $(NEXT_TAG)..."
-	@git tag -a $(NEXT_TAG) -m "Release $(NEXT_TAG)"
-	@git push --quiet origin $(NEXT_TAG)
-	@echo "✅ $(NEXT_TAG) publicada."
+	@echo "🏷️  Publicando $(TAG)..."
+	@{ echo "Release $(TAG)"; echo; ./scripts/release-notes.sh $(VERSION); } | git tag -a $(TAG) -F -
+	@git push --quiet origin $(TAG)
+	@echo "✅ $(TAG) publicada."
 	@echo
 	@echo "   Para os serviços consumirem, atualize o pyproject de cada um:"
-	@echo "   datalab-commons[...] @ git+https://github.com/mamazinho/datalab-commons.git@$(NEXT_TAG)"
+	@echo "   datalab-commons[...] @ git+https://github.com/mamazinho/datalab-commons.git@$(TAG)"
 	@echo "   e rode: uv lock --upgrade-package datalab-commons && uv sync"

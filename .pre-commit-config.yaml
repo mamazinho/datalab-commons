@@ -41,6 +41,8 @@ repos:
   # Auditoria de advisories nas dependências de produção.
   # É um hook local porque o pip-audit precisa do uv.lock exportado como requirements — e só
   # das deps de produção, sem as de dev. Roda apenas quando o lock ou o pyproject mudam.
+  # O export vai com hashes e o pip-audit com `--require-hashes`: é o que dispensa o pip de
+  # resolver de novo o que o lock já resolveu (`--no-deps` faria o mesmo, mas sem hash e com aviso).
   - repo: local
     hooks:
       - id: pip-audit
@@ -50,5 +52,5 @@ repos:
         files: ^(uv\.lock|pyproject\.toml)$
         verbose: true
         entry: >
-          sh -c 'uv export --format requirements-txt --no-dev --no-emit-project --no-hashes --quiet
-          | uv run pip-audit --no-deps --disable-pip -r /dev/stdin'
+          sh -c 'uv export --format requirements-txt --no-dev --no-emit-project --quiet
+          | uv run pip-audit --require-hashes --disable-pip -r /dev/stdin'

@@ -1,16 +1,12 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-# A versão sai da tag do git, não de um número escrito aqui: os dois serviços fixam a lib por
-# `@vX.Y.Z`, e um pyproject fora de sincronia com a tag faria o `service_version` de toda
-# telemetria mentir.
-[tool.hatch.version]
-source = "vcs"
 
 [project]
 name = "datalab-commons"
-dynamic = ["version"]
+# A tag sai daqui: o `make release` publica `v<version>` e recusa se ela já existir ou se o
+# CHANGES.rst não tiver a seção dela — então esquecer de bumpar não vira release silenciosa.
+version = "0.5.0"
 description = "Observabilidade e utilitários compartilhados entre a Datalab API e a Datalab Core API."
 readme = "README.md"
 requires-python = ">=3.13"
@@ -29,6 +25,12 @@ dependencies = [
 sqlalchemy = ["logfire[sqlalchemy]>=4.41.0"]
 # `instrument_agents` só faz sentido em quem roda pydantic-ai.
 ai = ["pydantic-ai>=1.62.0"]
+# Leitura de anexo do usuário: o que o provider de IA não lê no formato original.
+files = [
+    "openpyxl>=3.1.5",
+    "python-docx>=1.2.0",
+    "python-pptx>=1.0.2",
+]
 
 [dependency-groups]
 dev = [
