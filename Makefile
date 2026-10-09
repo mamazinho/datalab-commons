@@ -17,7 +17,7 @@ lint: ## Roda o pre-commit em todos os arquivos
 	@uv run pre-commit run -a -v
 
 test: ## Roda a suíte com cobertura
-	@uv run pytest --cov --cov-report=term-missing -ra
+	@uv run --all-extras pytest --cov --cov-report=term-missing -ra
 
 update-deps: ## Atualiza as dependências
 	@uv sync --upgrade
