@@ -4,12 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datalab-commons"
-# A tag sai daqui: o `make release` publica `v<version>` e recusa se ela já existir ou se o
-# CHANGES.rst não tiver a seção dela — então esquecer de bumpar não vira release silenciosa.
-version = "0.5.0"
+version = "0.6.0"
 description = "Observabilidade e utilitários compartilhados entre a Datalab API e a Datalab Core API."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14.8"
 dependencies = [
     "fastapi>=0.116.1",
     "httpx>=0.28.1",
@@ -21,11 +19,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# A datalab-api tem banco; a core-api não.
 sqlalchemy = ["logfire[sqlalchemy]>=4.41.0"]
-# `instrument_agents` só faz sentido em quem roda pydantic-ai.
 ai = ["pydantic-ai>=1.62.0"]
-# Leitura de anexo do usuário: o que o provider de IA não lê no formato original.
 files = [
     "openpyxl>=3.1.5",
     "python-docx>=1.2.0",
@@ -34,6 +29,7 @@ files = [
 
 [dependency-groups]
 dev = [
+    "sqlalchemy>=2.1",
     "pip-audit>=2.10.1",
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",
@@ -63,7 +59,7 @@ exclude_also = [
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 # Padrão do ruff (E4/E7/E9 + F) mais isort, warnings e pyupgrade.

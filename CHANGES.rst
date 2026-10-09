@@ -1,6 +1,10 @@
 Changelog
 =========
 
+0.6.0 (2026-10-09)
+------------------
+
+- Atualiza versão minima do python para 3.14.8, mais recente até então.
 
 0.5.0 (2026-09-24)
 ------------------

@@ -49,8 +49,8 @@ Campos permanentes no escopo e campos pontuais em uma linha:
 logger = get_logger(__name__)
 
 with log_context(company_id=company.id, user_id=user.id):
-    logger.info("Buscando ativos")                       # já carrega company_id e user_id
-    logger.info("Ativo escolhido", asset_id=asset.id)    # + asset_id só nesta linha
+    logger.info("Buscando ativos")  # já carrega company_id e user_id
+    logger.info("Ativo escolhido", asset_id=asset.id)  # + asset_id só nesta linha
 ```
 
 `log_context` usa Baggage do OpenTelemetry, então os campos também viajam no header da requisição
@@ -75,12 +75,12 @@ que os serviços usam. Extra `files`.
 
 ```python
 from datalab_commons.files import (
-    content_disposition,   # header do download, com nome acentuado
-    decode_text,           # bytes -> str (utf-8, cp1252, latin-1)
-    extract_text,          # docx, xlsx, pptx e texto -> markdown, para o modelo que não lê o formato
-    guess_media_type,      # content-type do navegador ou extensão do nome, Office incluso
-    normalize_filename,    # nome seguro, com extensão e limite de 255
-    to_utf8,               # reencoda só o que não é utf-8
+    content_disposition,  # header do download, com nome acentuado
+    decode_text,  # bytes -> str (utf-8, cp1252, latin-1)
+    extract_text,  # docx, xlsx, pptx e texto -> markdown, para o modelo que não lê o formato
+    guess_media_type,  # content-type do navegador ou extensão do nome, Office incluso
+    normalize_filename,  # nome seguro, com extensão e limite de 255
+    to_utf8,  # reencoda só o que não é utf-8
 )
 ```
 

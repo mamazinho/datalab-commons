@@ -5,11 +5,14 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from opentelemetry.sdk._logs import LogRecordProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from sqlalchemy import create_engine, text
 
 from datalab_commons.observability.context import log_context
 from datalab_commons.observability.logging import get_logger
 from datalab_commons.observability.middleware import TRACE_HEADER, RequestLoggingMiddleware
-from datalab_commons.observability.setup import configure_observability, instrument_fastapi_app
+from datalab_commons.observability.setup import configure_observability, instrument_fastapi_app, instrument_mcp
 
 SERVICE_NAME = "test-service"
 
@@ -142,3 +145,41 @@ class TestInstrumentFastapiApp:
         response = await client.get("/items/42")
 
         assert response.headers[TRACE_HEADER]
+
+
+class TestInstrumentSqlalchemy:
+    def test_the_query_spans_survive_the_declared_version_ceiling(self, observability):
+        """opentelemetry-instrumentation-sqlalchemy declares `sqlalchemy < 2.1.0` and, past it,
+        skips instrumenting while only logging an error — we would lose every query span without
+        noticing. The ceiling is conservative, so the instrumentation is asked to ignore it."""
+        exported = InMemorySpanExporter()
+        logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_tracer_provider().add_span_processor(SimpleSpanProcessor(exported))
+        engine = create_engine("sqlite://")
+
+        instrument_fastapi_app(FastAPI(), engine=engine)
+        with engine.connect() as connection:
+            connection.execute(text("select 1"))
+
+        assert "select" in [span.name for span in exported.get_finished_spans()]
+
+
+class TestInstrumentMcp:
+    def test_an_incompatible_mcp_package_does_not_stop_the_boot(self, monkeypatch: pytest.MonkeyPatch):
+        """logfire's MCP integration imports `mcp.shared.session`, which mcp 2.x removed. Losing the
+        MCP spans is acceptable; refusing to start the application over them is not."""
+
+        def missing_module():
+            raise ModuleNotFoundError("No module named 'mcp.shared.session'")
+
+        monkeypatch.setattr(logfire, "instrument_mcp", missing_module)
+
+        instrument_mcp()
+
+    def test_any_other_failure_still_surfaces(self, monkeypatch: pytest.MonkeyPatch):
+        def broken():
+            raise RuntimeError("something we did not expect")
+
+        monkeypatch.setattr(logfire, "instrument_mcp", broken)
+
+        with pytest.raises(RuntimeError):
+            instrument_mcp()

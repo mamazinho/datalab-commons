@@ -4,7 +4,7 @@ from typing import Any
 import logfire
 from fastapi import FastAPI
 
-from datalab_commons.observability.logging import setup_logging
+from datalab_commons.observability.logging import get_logger, setup_logging
 from datalab_commons.observability.middleware import RequestLoggingMiddleware
 from datalab_commons.observability.settings import ObservabilitySettings
 
@@ -47,11 +47,19 @@ def instrument_fastapi_app(
     logfire.instrument_fastapi(app, excluded_urls=excluded or None)
 
     if engine is not None:
-        logfire.instrument_sqlalchemy(engine)
+        # O opentelemetry-instrumentation-sqlalchemy declara `sqlalchemy < 2.1.0` e, sem o
+        # skip, pula a instrumentação em silêncio — ficaríamos sem span de query no 2.1. O teto
+        # é conservador: os eventos de engine que ele usa seguem existindo.
+        logfire.instrument_sqlalchemy(engine, skip_dep_check=True)
 
 
 def instrument_mcp() -> None:
-    logfire.instrument_mcp()
+    # A integração de MCP do logfire importa `mcp.shared.session`, removido no mcp 2.x. Perder os
+    # spans de MCP é aceitável; derrubar o boot da aplicação por causa deles não é.
+    try:
+        logfire.instrument_mcp()
+    except ModuleNotFoundError:
+        get_logger(__name__).warning("Skipped MCP instrumentation: incompatible mcp package layout")
 
 
 def instrument_agents(settings: ObservabilitySettings | None = None) -> None:

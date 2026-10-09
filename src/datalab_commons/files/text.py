@@ -73,7 +73,7 @@ def _from_docx(content: bytes) -> str:
     return "\n\n".join(block for block in blocks if block)
 
 
-def _docx_paragraph(paragraph: "Paragraph") -> str:
+def _docx_paragraph(paragraph: Paragraph) -> str:
     text = paragraph.text.strip()
     if not text:
         return ""
