@@ -23,7 +23,7 @@ update-deps: ## Atualiza as dependências
 	@uv sync --upgrade
 	@uv lock --upgrade
 
-delete_pycache:
+delete-pycache:
 	@find . -type d -name "__pycache__" -exec rm -rf {} +
 
 release: ## Publica a versão do pyproject como tag, com as notas do CHANGES.rst
