@@ -2,27 +2,37 @@ from http import HTTPStatus
 from typing import Any
 
 import httpx
-from fastapi import HTTPException
 from pydantic import BaseModel
 
+from datalab_commons.censor import Censor
 from datalab_commons.converter import to_snake_case
+from datalab_commons.errors import ErrorResponse, FriendlyException
 
 
-class UpstreamError(HTTPException):
-    """O serviço remoto respondeu, com erro. Quem chama costuma reagir ao status dele."""
+class UpstreamError(FriendlyException):
+    status_code = HTTPStatus.BAD_GATEWAY
+    friendly_message = "Um serviço de que dependemos falhou. Tente novamente em instantes."
 
     def __init__(self, service: str, status_code: int, body: str) -> None:
-        self.service = service
         self.upstream_status = status_code
-        super().__init__(HTTPStatus.BAD_GATEWAY, f"{service} returned {status_code}: {body}")
+        upstream = ErrorResponse.parse(body)
+        super().__init__(
+            detail={
+                "service": service,
+                "upstream_status": status_code,
+                "upstream": Censor.censor(upstream.model_dump()) if upstream else Censor.censor_text(body),
+            },
+            message=f"{service} returned {status_code}",
+            friendly_message=upstream.friendly_message if upstream else None,
+        )
 
 
-class UpstreamUnreachable(HTTPException):
-    """O serviço remoto não respondeu: timeout, conexão recusada, DNS."""
+class UpstreamUnreachable(FriendlyException):
+    status_code = HTTPStatus.BAD_GATEWAY
+    friendly_message = "Um serviço de que dependemos não respondeu. Tente novamente em instantes."
 
-    def __init__(self, service: str, cause: Exception) -> None:
-        self.service = service
-        super().__init__(HTTPStatus.BAD_GATEWAY, f"{service} could not be reached: {cause}")
+    def __init__(self, service: str) -> None:
+        super().__init__(detail={"service": service}, message=f"{service} could not be reached")
 
 
 class BaseAPIClient:
@@ -48,7 +58,7 @@ class BaseAPIClient:
             try:
                 response = await http.request(method, path.lstrip("/"), **kwargs)
             except httpx.HTTPError as exception:
-                raise UpstreamUnreachable(str(self.name), exception) from exception
+                raise UpstreamUnreachable(str(self.name)) from exception
 
         if response.is_error:
             raise UpstreamError(str(self.name), response.status_code, response.text)

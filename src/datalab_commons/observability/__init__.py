@@ -1,7 +1,7 @@
 from datalab_commons.observability.context import log_context as log_context
 from datalab_commons.observability.logging import get_logger as get_logger
 from datalab_commons.observability.logging import setup_logging as setup_logging
-from datalab_commons.observability.middleware import current_trace_id as current_trace_id
+from datalab_commons.observability.middleware import TRACE_RESPONSE_HEADER as TRACE_RESPONSE_HEADER
 from datalab_commons.observability.settings import ObservabilitySettings as ObservabilitySettings
 from datalab_commons.observability.setup import configure_observability as configure_observability
 from datalab_commons.observability.setup import instrument_agents as instrument_agents

@@ -3,17 +3,41 @@ from typing import Any
 
 import logfire
 from fastapi import FastAPI
+from opentelemetry.context import Context
+from opentelemetry.propagate import set_global_textmap
+from opentelemetry.sdk.trace import Span, SpanProcessor
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
+from datalab_commons.censor import Censor
 from datalab_commons.observability.logging import get_logger, setup_logging
 from datalab_commons.observability.middleware import RequestLoggingMiddleware
 from datalab_commons.observability.settings import ObservabilitySettings
 
 SCRUBBING_EXTRA_PATTERNS = ["x-provider-token", "x-api-key", "x-company-id"]
 
+URL_ATTRIBUTES = ("http.url", "http.target", "url.full", "url.query")
+
+
+class CensorUrlSpanProcessor(SpanProcessor):
+    """O scrubbing do Logfire nunca olha as chaves de URL, e a query leva code, token e secret."""
+
+    def on_start(self, span: Span, parent_context: Context | None = None) -> None:
+        self.censor(span)
+
+    @staticmethod
+    def censor(span: Span, *_: Any) -> None:
+        for key in URL_ATTRIBUTES:
+            value = (span.attributes or {}).get(key)
+            if isinstance(value, str):
+                span.set_attribute(key, Censor.censor_text(value))
+
 
 def configure_observability(service_name: str, service_version: str) -> ObservabilitySettings:
     settings = ObservabilitySettings()
 
+    # Só o traceparent atravessa processos: o Baggage do log_context iria para todo host chamado
+    # (OpenAI, o MCP do usuário) e seria aceito de qualquer cliente.
+    set_global_textmap(TraceContextTextMapPropagator())
     logfire.configure(
         service_name=service_name,
         service_version=service_version,
@@ -26,6 +50,7 @@ def configure_observability(service_name: str, service_version: str) -> Observab
         distributed_tracing=True,
         sampling=logfire.SamplingOptions.level_or_duration(head=settings.trace_sample_rate),
         scrubbing=logfire.ScrubbingOptions(extra_patterns=SCRUBBING_EXTRA_PATTERNS),
+        additional_span_processors=[CensorUrlSpanProcessor()],
     )
 
     setup_logging(settings.log_level, logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_logger_provider())
@@ -44,7 +69,8 @@ def instrument_fastapi_app(
     app.add_middleware(RequestLoggingMiddleware, excluded_paths=excluded)
     # Depois do add_middleware de propósito: o span do request precisa envolver o middleware,
     # senão não há trace_id para pôr no header nem para o log de conclusão.
-    logfire.instrument_fastapi(app, excluded_urls=excluded or None)
+    # O ASGI regrava os atributos do request depois do on_start; o hook roda depois disso.
+    logfire.instrument_fastapi(app, excluded_urls=excluded or None, server_request_hook=CensorUrlSpanProcessor.censor)
 
     if engine is not None:
         # O opentelemetry-instrumentation-sqlalchemy declara `sqlalchemy < 2.1.0` e, sem o

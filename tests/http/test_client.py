@@ -102,7 +102,34 @@ class TestRequest:
         with pytest.raises(UpstreamError) as raised:
             await client.fetch("things/")
 
-        assert raised.value.detail == f"{EchoAPIClient.name} returned 503: unavailable"
+        assert raised.value.message == f"{EchoAPIClient.name} returned 503"
+        assert raised.value.detail == {"service": EchoAPIClient.name, "upstream_status": 503, "upstream": "unavailable"}
+
+    async def test_passes_on_the_friendly_message_of_a_service_that_follows_the_error_contract(
+        self, client, respx_mock
+    ):
+        upstream = {
+            "error": "GoogleProviderRenewTokenFriendlyException",
+            "status": 400,
+            "message": "Could not renew the Google token",
+            "friendly_message": "Reconecte sua conta Google em Integrações.",
+            "detail": None,
+        }
+        respx_mock.get(f"{BASE_URL}/things/").mock(return_value=httpx.Response(400, json=upstream))
+
+        with pytest.raises(UpstreamError) as raised:
+            await client.fetch("things/")
+
+        assert raised.value.friendly_message == "Reconecte sua conta Google em Integrações."
+        assert raised.value.detail["upstream"]["error"] == "GoogleProviderRenewTokenFriendlyException"
+
+    async def test_censors_the_body_of_a_service_outside_the_contract(self, client, respx_mock):
+        respx_mock.get(f"{BASE_URL}/things/").mock(return_value=httpx.Response(500, text="bad api_key=sk-123"))
+
+        with pytest.raises(UpstreamError) as raised:
+            await client.fetch("things/")
+
+        assert raised.value.detail["upstream"] == "bad api_key=*****"
 
     async def test_carries_the_upstream_status_so_the_caller_can_react_to_it(self, client, respx_mock):
         """Without this field, telling "it rejected the caller" apart from "it broke" would mean
@@ -121,7 +148,7 @@ class TestRequest:
             await client.fetch("things/")
 
         assert raised.value.status_code == HTTPStatus.BAD_GATEWAY
-        assert "could not be reached" in raised.value.detail
+        assert "could not be reached" in raised.value.message
 
     @pytest.mark.parametrize(
         "verb",

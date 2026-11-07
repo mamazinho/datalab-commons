@@ -53,8 +53,8 @@ with log_context(company_id=company.id, user_id=user.id):
     logger.info("Ativo escolhido", asset_id=asset.id)  # + asset_id só nesta linha
 ```
 
-`log_context` usa Baggage do OpenTelemetry, então os campos também viajam no header da requisição
-e reaparecem nos spans do serviço chamado.
+Os campos do `log_context` ficam no processo: entre serviços só viaja o `traceparent`, que basta
+para juntar tudo no mesmo trace. Baggage de quem chama é ignorado.
 
 ### Variáveis de ambiente
 
@@ -67,6 +67,50 @@ CONSOLE_SPANS=true
 CAPTURE_AI_CONTENT=true
 TRACE_SAMPLE_RATE=1.0
 ```
+
+### Log de request
+
+O `instrument_fastapi_app` instala o `RequestLoggingMiddleware`, que loga "Request started" e
+"Request completed" com método, path, `traceparent`, os nomes dos headers e o corpo censurado pelo
+`Censor` (até 10 KB; corpo binário, como upload, segue direto para a rota e aparece só com o tipo).
+A resposta devolve o trace no header W3C `traceresponse`. A query das URLs nos spans do Logfire
+também passa pelo `Censor`, porque o scrubbing dele não olha URL.
+
+## Erros
+
+Todo erro dos serviços sai no mesmo contrato, de 4xx a 5xx:
+
+```json
+{"error": "NomeDaExcecao", "status": 400, "message": "texto técnico", "friendly_message": "o que o usuário lê", "detail": {}}
+```
+
+```python
+from datalab_commons.errors import FriendlyErrorHandler, FriendlyException, UnhandledErrorMiddleware
+
+app = FastAPI(exception_handlers=FriendlyErrorHandler.defaults())
+app.add_middleware(UnhandledErrorMiddleware)  # antes do CORSMiddleware, senão o 500 sai sem CORS
+app.add_middleware(CORSMiddleware, ...)
+
+
+class AgentNotFoundFriendlyException(FriendlyException):
+    status_code = HTTPStatus.NOT_FOUND
+    message = "Agent not found"
+    friendly_message = "Agente não encontrado."
+```
+
+Cada serviço declara as próprias subclasses, levantadas só em service ou api. A levantada com
+`raise ... from error` loga a original com traceback e, só com `LOG_LEVEL=DEBUG`, devolve ela em
+`detail.cause`; fora disso o suporte acha a causa pelo trace.
+
+No 422, o `friendly_message` vem do tipo do primeiro erro do Pydantic ("Um dos campos precisa ter
+ao menos 3 caracteres."); tipo sem frase própria cai em "Os dados enviados são inválidos.". Num
+`value_error`, o texto é o do `ValueError` do validador, então ele precisa estar em português.
+
+## Dados sensíveis
+
+`Censor` troca por `*****` o que não pode sair num log nem numa resposta: `Censor.censor(valor)`
+percorre dict e lista mascarando as chaves sensíveis, e `Censor.censor_text(texto)` cobre texto
+livre (`api_key=...`, `Bearer ...`, JWT, credencial em URL, query do SQLAlchemy).
 
 ## Arquivos
 

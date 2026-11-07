@@ -4,6 +4,7 @@ import logfire
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from opentelemetry import baggage, propagate
 from opentelemetry.sdk._logs import LogRecordProcessor
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -11,7 +12,7 @@ from sqlalchemy import create_engine, text
 
 from datalab_commons.observability.context import log_context
 from datalab_commons.observability.logging import get_logger
-from datalab_commons.observability.middleware import TRACE_HEADER, RequestLoggingMiddleware
+from datalab_commons.observability.middleware import TRACE_RESPONSE_HEADER, RequestLoggingMiddleware
 from datalab_commons.observability.setup import configure_observability, instrument_fastapi_app, instrument_mcp
 
 SERVICE_NAME = "test-service"
@@ -107,7 +108,7 @@ class TestLogPipeline:
         response = await client.get("/items/42")
 
         record = records_named(observability, "Fetching item")[0]
-        assert response.headers[TRACE_HEADER] == f"{record.trace_id:032x}"
+        assert response.headers[TRACE_RESPONSE_HEADER].split("-")[1] == f"{record.trace_id:032x}"
 
     async def test_the_log_carries_both_the_context_fields_and_the_call_site_ones(self, client, observability):
         await client.get("/items/42")
@@ -129,6 +130,44 @@ class TestDistributedTracing:
         each process opens its own trace and the whole flow stops being visible at once."""
         assert logfire.DEFAULT_LOGFIRE_INSTANCE.config.distributed_tracing is True
 
+    def test_sends_only_the_traceparent_to_the_services_it_calls(self, observability):
+        carrier: dict[str, str] = {}
+
+        with logfire.span("request"), log_context(user_id="user-1", company_id="company-1"):
+            propagate.inject(carrier)
+
+        assert list(carrier) == ["traceparent"]
+
+    def test_ignores_the_baggage_a_caller_sends(self, observability):
+        context = propagate.extract({"baggage": "user_id=forged"})
+
+        assert baggage.get_all(context) == {}
+
+
+class TestUrlCensoring:
+    @pytest.fixture
+    def exported(self, observability) -> InMemorySpanExporter:
+        exporter = InMemorySpanExporter()
+        logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_tracer_provider().add_span_processor(SimpleSpanProcessor(exporter))
+        return exporter
+
+    async def test_censors_the_query_of_the_request_url_in_the_span(self, client, exported):
+        await client.get("/items/42?code=4/0AVG&page=2")
+
+        urls = [span.attributes["http.url"] for span in exported.get_finished_spans() if "http.url" in span.attributes]
+        assert urls == ["https://test/items/42?code=*****&page=2"]
+
+    def test_censors_the_secrets_of_an_outgoing_url_in_the_span(self, exported):
+        url = "https://graph.facebook.com/oauth/access_token?client_secret=s3cr3t&fb_exchange_token=EAAG&grant_type=x"
+        tracer = logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_tracer_provider().get_tracer("test")
+
+        tracer.start_span("GET", attributes={"url.full": url}).end()
+
+        [span] = exported.get_finished_spans()
+        assert span.attributes["url.full"] == (
+            "https://graph.facebook.com/oauth/access_token?client_secret=*****&fb_exchange_token=*****&grant_type=x"
+        )
+
 
 class TestInstrumentFastapiApp:
     def test_installs_the_logging_middleware(self, app):
@@ -139,12 +178,12 @@ class TestInstrumentFastapiApp:
         trace quota with traces that say nothing."""
         response = await client.get("/health/")
 
-        assert TRACE_HEADER not in response.headers
+        assert TRACE_RESPONSE_HEADER not in response.headers
 
     async def test_the_regular_route_gets_a_trace(self, client):
         response = await client.get("/items/42")
 
-        assert response.headers[TRACE_HEADER]
+        assert response.headers[TRACE_RESPONSE_HEADER]
 
 
 class TestInstrumentSqlalchemy:

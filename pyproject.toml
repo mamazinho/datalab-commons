@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "datalab-commons"
-version = "0.6.0"
+version = "0.7.0"
 description = "Observabilidade e utilitários compartilhados entre a Datalab API e a Datalab Core API."
 readme = "README.md"
 requires-python = ">=3.14.8"
