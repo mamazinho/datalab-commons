@@ -9,6 +9,7 @@ from opentelemetry.sdk.trace import Span, SpanProcessor
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 from datalab_commons.censor import Censor
+from datalab_commons.observability.context import LogFieldsSpanProcessor
 from datalab_commons.observability.logging import get_logger, setup_logging
 from datalab_commons.observability.middleware import RequestLoggingMiddleware
 from datalab_commons.observability.settings import ObservabilitySettings
@@ -35,7 +36,7 @@ class CensorUrlSpanProcessor(SpanProcessor):
 def configure_observability(service_name: str, service_version: str) -> ObservabilitySettings:
     settings = ObservabilitySettings()
 
-    # Só o traceparent atravessa processos: o Baggage do log_context iria para todo host chamado
+    # Só o traceparent atravessa processos: Baggage iria para todo host chamado
     # (OpenAI, o MCP do usuário) e seria aceito de qualquer cliente.
     set_global_textmap(TraceContextTextMapPropagator())
     logfire.configure(
@@ -50,7 +51,7 @@ def configure_observability(service_name: str, service_version: str) -> Observab
         distributed_tracing=True,
         sampling=logfire.SamplingOptions.level_or_duration(head=settings.trace_sample_rate),
         scrubbing=logfire.ScrubbingOptions(extra_patterns=SCRUBBING_EXTRA_PATTERNS),
-        additional_span_processors=[CensorUrlSpanProcessor()],
+        additional_span_processors=[LogFieldsSpanProcessor(), CensorUrlSpanProcessor()],
     )
 
     setup_logging(settings.log_level, logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_logger_provider())

@@ -2,8 +2,9 @@ import logging
 from typing import Any
 
 from opentelemetry._logs import LoggerProvider
-from opentelemetry.baggage import get_all as get_baggage
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
+
+from datalab_commons.observability.context import LogFields
 
 # O uvicorn desliga o propagate destes; sem religar, "Application startup complete" e os erros de
 # boot não saem do processo.
@@ -21,7 +22,7 @@ LOG_CALL_KWARGS = frozenset({"exc_info", "stack_info", "stacklevel", "extra"})
 
 CONSOLE_FORMAT = "%(asctime)s %(levelname)-8s %(name)s: %(message)s"
 
-# Atributos que todo LogRecord tem. O que sobra veio de `extra` ou do Baggage.
+# Atributos que todo LogRecord tem. O que sobra veio de `extra` ou do `add_fields`.
 # `color_message` é o mesmo texto com escapes ANSI que o uvicorn manda junto — puro ruído aqui.
 STANDARD_RECORD_ATTRIBUTES = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {
     "message",
@@ -31,19 +32,15 @@ STANDARD_RECORD_ATTRIBUTES = frozenset(logging.LogRecord("", 0, "", 0, "", None,
 }
 
 
-class BaggageFilter(logging.Filter):
-    """O OpenTelemetry cola Baggage em span automaticamente, mas não em log record."""
-
+class LogFieldsFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        for key, value in get_baggage().items():
+        for key, value in LogFields.current().items():
             if not hasattr(record, key):
                 setattr(record, key, value)
         return True
 
 
 class ConsoleFormatter(logging.Formatter):
-    """Mostra no terminal os campos que o Logfire receberia, para o log dizer o mesmo nos dois."""
-
     def format(self, record: logging.LogRecord) -> str:
         line = super().format(record)
         fields = {key: value for key, value in record.__dict__.items() if key not in STANDARD_RECORD_ATTRIBUTES}
@@ -57,6 +54,9 @@ class StructuredLogger(logging.LoggerAdapter):
         fields = {key: kwargs.pop(key) for key in list(kwargs) if key not in LOG_CALL_KWARGS}
         kwargs["extra"] = {**(kwargs.get("extra") or {}), **fields}
         return msg, kwargs
+
+    def add_fields(self, **fields: object) -> None:
+        LogFields.add(**fields)
 
 
 def get_logger(name: str) -> StructuredLogger:
@@ -79,7 +79,7 @@ def setup_logging(level: str | int, logger_provider: LoggerProvider | None = Non
         handlers.append(otel_handler)
 
     for handler in handlers:
-        handler.addFilter(BaggageFilter())
+        handler.addFilter(LogFieldsFilter())
 
     logging.basicConfig(level=level, handlers=handlers, force=True)
 

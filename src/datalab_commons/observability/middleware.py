@@ -9,7 +9,7 @@ from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from datalab_commons.censor import Censor
-from datalab_commons.observability.context import log_context
+from datalab_commons.observability.context import LogFields
 from datalab_commons.observability.logging import get_logger
 
 TRACEPARENT_HEADER = "traceparent"
@@ -51,7 +51,8 @@ class RequestLoggingMiddleware:
                 response_body.extend(message.get("body", b""))
             await send(message)
 
-        with log_context(http_method=request.method, http_path=path):
+        with LogFields.scope():
+            logger.add_fields(http_method=request.method, http_path=path)
             logger.info(
                 "Request started",
                 http_headers=list(request.headers.keys()),

@@ -2,15 +2,16 @@ import asyncio
 import json
 import logging
 import re
+from typing import Annotated
 
 import pytest
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Header, Request, Response
 from fastapi.responses import StreamingResponse
 from httpx import ASGITransport, AsyncClient
 from opentelemetry.sdk.trace import TracerProvider
 
-from datalab_commons.observability.context import log_context
-from datalab_commons.observability.logging import BaggageFilter, get_logger
+from datalab_commons.observability.context import LogFields
+from datalab_commons.observability.logging import LogFieldsFilter, get_logger
 from datalab_commons.observability.middleware import (
     MAX_LOGGED_BODY_CHARS,
     TRACE_RESPONSE_HEADER,
@@ -33,7 +34,7 @@ class RecordingHandler(logging.Handler):
 @pytest.fixture
 def recorded_logs():
     handler = RecordingHandler()
-    handler.addFilter(BaggageFilter())  # this is what `setup_logging` does on every handler
+    handler.addFilter(LogFieldsFilter())  # this is what `setup_logging` does on every handler
     logger = logging.getLogger("datalab_commons.observability.middleware")
     previous_handlers, previous_level, previous_propagate = list(logger.handlers), logger.level, logger.propagate
 
@@ -51,10 +52,12 @@ def app() -> FastAPI:
     application = FastAPI()
     logger = get_logger("test.route")
 
+    async def company(x_company_id: Annotated[str | None, Header()] = None) -> None:
+        logger.add_fields(company_id=x_company_id)
+
     @application.get("/items/{item_id}")
-    async def read_item(item_id: int):
-        with log_context(company_id="company-1"):
-            logger.info("Fetching item", item_id=item_id)
+    async def read_item(item_id: int, _: Annotated[None, Depends(company)]):
+        logger.info("Fetching item", item_id=item_id)
         return {"item_id": item_id}
 
     @application.get("/stream/")
@@ -218,6 +221,29 @@ class TestCompletionLog:
             await client.get("/boom/")
 
         assert (completion_log(recorded_logs).http_status, completion_log(recorded_logs).levelno) == (0, logging.ERROR)
+
+
+class TestLogFields:
+    async def test_the_completion_log_carries_the_fields_the_route_added(self, client, recorded_logs):
+        await client.get("/items/42", headers={"X-Company-Id": "company-1"})
+
+        assert completion_log(recorded_logs).company_id == "company-1"
+
+    async def test_a_request_does_not_inherit_the_fields_of_another(self, client, recorded_logs):
+        await client.get("/items/42", headers={"X-Company-Id": "company-1"})
+        recorded_logs.records.clear()
+
+        await client.get("/items/42")
+
+        assert not hasattr(completion_log(recorded_logs), "company_id")
+
+    async def test_leaves_the_outer_fields_as_they_were(self, client):
+        with LogFields.scope():
+            LogFields.add(job="nightly")
+
+            await client.get("/items/42", headers={"X-Company-Id": "company-1"})
+
+            assert LogFields.current() == {"job": "nightly"}
 
 
 class TestExcludedPaths:

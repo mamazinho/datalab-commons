@@ -2,14 +2,14 @@ import logging
 
 import pytest
 
-from datalab_commons.observability.context import log_context
+from datalab_commons.observability.context import LogFields
 from datalab_commons.observability.logging import (
     CONSOLE_FORMAT,
     QUIET_LOGGERS,
     SILENT_LOGGERS,
     UVICORN_LOGGERS,
-    BaggageFilter,
     ConsoleFormatter,
+    LogFieldsFilter,
     get_logger,
     setup_logging,
 )
@@ -78,13 +78,13 @@ class TestSetupLogging:
         assert logging.getLogger().level == logging.DEBUG
 
     def test_puts_the_context_filter_on_every_handler(self):
-        """Including the console one: without this the `log_context` fields would show up in
+        """Including the console one: without this the `add_fields` fields would show up in
         Logfire but vanish from the terminal, and the same log would say different things in each
         place."""
         setup_logging("INFO")
 
         handlers = logging.getLogger().handlers
-        assert handlers and all(any(isinstance(f, BaggageFilter) for f in h.filters) for h in handlers)
+        assert handlers and all(any(isinstance(f, LogFieldsFilter) for f in h.filters) for h in handlers)
 
 
 class TestConsoleFormatter:
@@ -107,28 +107,33 @@ class TestConsoleFormatter:
         assert line.index("company_id=") < line.index("http_status=")
 
 
-class TestBaggageFilter:
+class TestLogFieldsFilter:
+    @pytest.fixture(autouse=True)
+    def fresh_fields(self):
+        with LogFields.scope():
+            yield
+
     def test_attaches_the_context_fields_to_the_record(self):
         record = logging.LogRecord("test", logging.INFO, __file__, 1, "message", None, None)
+        LogFields.add(company_id="company-1")
 
-        with log_context(company_id="company-1"):
-            BaggageFilter().filter(record)
+        LogFieldsFilter().filter(record)
 
         assert record.company_id == "company-1"
 
     def test_does_not_overwrite_a_field_the_record_already_has(self):
         record = logging.LogRecord("test", logging.INFO, __file__, 1, "message", None, None)
         record.company_id = "from-the-log-itself"
+        LogFields.add(company_id="from-the-context")
 
-        with log_context(company_id="from-the-context"):
-            BaggageFilter().filter(record)
+        LogFieldsFilter().filter(record)
 
         assert record.company_id == "from-the-log-itself"
 
     def test_adds_nothing_outside_of_any_context(self):
         record = logging.LogRecord("test", logging.INFO, __file__, 1, "message", None, None)
 
-        BaggageFilter().filter(record)
+        LogFieldsFilter().filter(record)
 
         assert not hasattr(record, "company_id")
 
@@ -170,3 +175,9 @@ class TestStructuredLogger:
         record = recorded.records[0]
         assert record.exc_info is not None
         assert record.company_id == "company-1"
+
+    def test_add_fields_is_shared_by_every_logger(self):
+        with LogFields.scope():
+            get_logger("another.module").add_fields(company_id="company-1")
+
+            assert LogFields.current() == {"company_id": "company-1"}

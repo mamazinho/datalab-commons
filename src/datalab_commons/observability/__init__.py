@@ -1,4 +1,3 @@
-from datalab_commons.observability.context import log_context as log_context
 from datalab_commons.observability.logging import get_logger as get_logger
 from datalab_commons.observability.logging import setup_logging as setup_logging
 from datalab_commons.observability.middleware import TRACE_RESPONSE_HEADER as TRACE_RESPONSE_HEADER

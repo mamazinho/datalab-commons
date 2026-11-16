@@ -32,7 +32,6 @@ from datalab_commons.observability import (
     configure_observability,
     instrument_agents,
     instrument_fastapi_app,
-    log_context,
     get_logger,
 )
 
@@ -43,18 +42,20 @@ instrument_fastapi_app(app, engine=engine, excluded_urls=["/v1/health/"])
 instrument_agents()
 ```
 
-Campos permanentes no escopo e campos pontuais em uma linha:
+Campos da requisição inteira e campos pontuais em uma linha:
 
 ```python
 logger = get_logger(__name__)
 
-with log_context(company_id=company.id, user_id=user.id):
-    logger.info("Buscando ativos")  # já carrega company_id e user_id
-    logger.info("Ativo escolhido", asset_id=asset.id)  # + asset_id só nesta linha
+logger.add_fields(company_id=company.id, user_id=user.id)  # numa dependência, por exemplo
+logger.info("Buscando ativos")  # já carrega company_id e user_id
+logger.info("Ativo escolhido", asset_id=asset.id)  # + asset_id só nesta linha
 ```
 
-Os campos do `log_context` ficam no processo: entre serviços só viaja o `traceparent`, que basta
-para juntar tudo no mesmo trace. Baggage de quem chama é ignorado.
+O `add_fields` vale para todo log e span dali até o fim da requisição, de qualquer logger e mesmo
+no streaming. Chamado de novo, soma os campos (ou troca o valor de um que já existia). Cada
+requisição começa sem campos. Eles ficam no processo: entre serviços só viaja o `traceparent`, que
+basta para juntar tudo no mesmo trace. Baggage de quem chama é ignorado.
 
 ### Variáveis de ambiente
 

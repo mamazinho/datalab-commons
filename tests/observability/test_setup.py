@@ -1,8 +1,10 @@
 import logging
+from typing import Annotated
 
 import logfire
 import pytest
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from fastapi.responses import StreamingResponse
 from httpx import ASGITransport, AsyncClient
 from opentelemetry import baggage, propagate
 from opentelemetry.sdk._logs import LogRecordProcessor
@@ -10,7 +12,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy import create_engine, text
 
-from datalab_commons.observability.context import log_context
+from datalab_commons.observability.context import LogFields
 from datalab_commons.observability.logging import get_logger
 from datalab_commons.observability.middleware import TRACE_RESPONSE_HEADER, RequestLoggingMiddleware
 from datalab_commons.observability.setup import configure_observability, instrument_fastapi_app, instrument_mcp
@@ -55,11 +57,24 @@ def app(observability) -> FastAPI:
     application = FastAPI()
     logger = get_logger("test.route")
 
+    async def company() -> None:
+        logger.add_fields(company_id="company-1")
+
     @application.get("/items/{item_id}")
-    async def read_item(item_id: int):
-        with log_context(company_id="company-1"):
+    async def read_item(item_id: int, _: Annotated[None, Depends(company)]):
+        for entity in range(3):
+            logger.add_fields(entity_ids=",".join(str(index) for index in range(entity + 1)))
+        with logfire.span("query"):
             logger.info("Fetching item", item_id=item_id)
         return {"item_id": item_id}
+
+    @application.get("/stream/")
+    async def stream(_: Annotated[None, Depends(company)]):
+        async def body():
+            logger.info("Streaming")
+            yield b"ok"
+
+        return StreamingResponse(body())
 
     @application.get("/health/")
     async def health():
@@ -117,6 +132,19 @@ class TestLogPipeline:
         assert attributes["company_id"] == "company-1"
         assert attributes["item_id"] == 42
 
+    async def test_the_fields_added_in_a_dependency_survive_its_span(self, client, observability):
+        """FastAPI opens a span per dependency; the OpenTelemetry Baggage set there vanished when that
+        span closed, and the endpoint logs came out without the company."""
+        await client.get("/items/42")
+
+        attributes = dict(records_named(observability, "Fetching item")[0].attributes)
+        assert (attributes["company_id"], attributes["entity_ids"]) == ("company-1", "0,1,2")
+
+    async def test_the_fields_reach_the_logs_of_a_streaming_response(self, client, observability):
+        await client.get("/stream/")
+
+        assert dict(records_named(observability, "Streaming")[0].attributes)["company_id"] == "company-1"
+
     async def test_the_call_site_field_does_not_leak_into_the_other_logs(self, client, observability):
         await client.get("/items/42")
 
@@ -133,7 +161,8 @@ class TestDistributedTracing:
     def test_sends_only_the_traceparent_to_the_services_it_calls(self, observability):
         carrier: dict[str, str] = {}
 
-        with logfire.span("request"), log_context(user_id="user-1", company_id="company-1"):
+        with logfire.span("request"), LogFields.scope():
+            LogFields.add(user_id="user-1", company_id="company-1")
             propagate.inject(carrier)
 
         assert list(carrier) == ["traceparent"]
@@ -167,6 +196,17 @@ class TestUrlCensoring:
         assert span.attributes["url.full"] == (
             "https://graph.facebook.com/oauth/access_token?client_secret=*****&fb_exchange_token=*****&grant_type=x"
         )
+
+
+class TestFieldsOnSpans:
+    async def test_the_spans_opened_after_the_fields_carry_them(self, client, observability):
+        exporter = InMemorySpanExporter()
+        logfire.DEFAULT_LOGFIRE_INSTANCE.config.get_tracer_provider().add_span_processor(SimpleSpanProcessor(exporter))
+
+        await client.get("/items/42")
+
+        [query] = [dict(span.attributes or {}) for span in exporter.get_finished_spans() if span.name == "query"]
+        assert (query["company_id"], query["entity_ids"]) == ("company-1", "0,1,2")
 
 
 class TestInstrumentFastapiApp:

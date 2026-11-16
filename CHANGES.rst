@@ -1,6 +1,16 @@
 Changelog
 =========
 
+0.8.0 (2026-11-16)
+------------------
+
+- ``logger.add_fields(...)`` substitui o ``log_context``: os campos valem para todo log e span dali
+  até o fim da requisição, sem bloco ``with``. Corrige os campos postos numa dependência do FastAPI,
+  que sumiam no endpoint: eram Baggage do OpenTelemetry, e o Baggage cai quando fecha o span que o
+  FastAPI abre para cada dependência. Agora é um ContextVar, que o ``RequestLoggingMiddleware``
+  zera a cada requisição.
+- **Quebra:** saem ``log_context`` e ``BaggageFilter`` (agora ``LogFieldsFilter``).
+
 0.7.0 (2026-11-05)
 ------------------
 
